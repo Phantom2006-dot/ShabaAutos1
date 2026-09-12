@@ -79,8 +79,8 @@ export default function App() {
         onCloseMobileMenu={() => setMobileMenuOpen(false)}
       />
 
-      {/* Main Screen Views with bottom safe padding on mobile for the bottom nav bar */}
-      <main key={currentScreen} className="shaba-page-transition flex-1 pb-20 md:pb-0 min-w-0 w-full max-w-full">
+      {/* Main Screen Views with bottom safe padding on mobile and tablet for the bottom nav bar */}
+      <main key={currentScreen} className="shaba-page-transition flex-1 pb-20 lg:pb-0 min-w-0 w-full max-w-full">
         {currentScreen === 'home' && (
           <HomeScreen
             onNavigate={handleNavigate}

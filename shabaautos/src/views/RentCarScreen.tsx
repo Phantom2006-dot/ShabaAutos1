@@ -141,8 +141,8 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   }, [rentalCars, searchQuery, selectedCategory]);
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] shaba-screen rent-screen">
-      <section className="rent-mobile-page sm:hidden">
+    <div className="min-h-screen bg-[#f8f9fa] shaba-screen rent-screen font-sans">
+      <section className="rent-mobile-page sm:hidden font-sans">
         <div className="rent-mobile-topbar">
           <button type="button" onClick={() => onNavigate('home')} aria-label="Back to home"><ArrowLeft className="w-5 h-5" /></button>
           <div><small>SHABAAUTOS RENTALS</small><strong>Find your ride</strong></div>

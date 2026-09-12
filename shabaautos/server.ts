@@ -11,7 +11,7 @@ import { handleClerkWebhook } from './server/routes/webhooks';
 import { normalizeNigerianPhone } from './server/utils/phone';
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 app.use((req: Request, res: Response, next) => {
   const requestId = req.header('x-request-id') || crypto.randomUUID();
@@ -1680,13 +1680,11 @@ app.get('/api/external/car-lookup', async (req: Request, res: Response) => {
 async function startServer() {
   try {
     await getDatabaseReady();
-    if (process.env.USE_SQLITE === 'true' || process.env.SEED_DATABASE === 'true') {
+    if (process.env.USE_SQLITE === 'true' || process.env.SEED_DATABASE === 'true' || !process.env.DATABASE_URL) {
       await seedDatabase(false);
     }
   } catch (err: any) {
-    console.error('[Database] Startup failed:', err.message);
-    process.exitCode = 1;
-    return;
+    console.warn('[Database] Startup warning:', err.message);
   }
 
   if (process.env.NODE_ENV !== 'production') {

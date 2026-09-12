@@ -753,45 +753,9 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Tablet Navigation Controls (768px - 1023px) */}
-        <div className="hidden md:flex lg:hidden items-center gap-2 ml-auto">
-          <a
-            href="tel:+2348123456789"
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-[#12492f] bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors min-h-[44px]"
-            aria-label="Call ShabaAutos Hotline"
-          >
-            <Phone size={14} className="text-[#158047]" />
-            <span className="text-[11px]">Hotline</span>
-          </a>
-
-          <button
-            onClick={() => handleNavClick('saved-compare')}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#12492f] bg-emerald-50/70 hover:bg-emerald-100/70 rounded-lg transition-colors relative cursor-pointer min-h-[44px]"
-            aria-label="Saved Cars"
-          >
-            <Heart size={15} className={savedCount > 0 ? 'fill-[#12492f]/20' : ''} />
-            <span className="text-[11px]">Saved</span>
-            {savedCount > 0 && (
-              <span className="w-4 h-4 bg-[#12492f] text-white rounded-full text-[9px] font-bold flex items-center justify-center">
-                {savedCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => handleNavClick('saved-compare')}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#12492f] bg-emerald-50/70 hover:bg-emerald-100/70 rounded-lg transition-colors cursor-pointer min-h-[44px]"
-            aria-label="Compare List"
-          >
-            <Scale size={15} />
-            <span className="text-[11px]">Compare</span>
-            {compareCount > 0 && (
-              <span className="w-4 h-4 bg-[#12492f] text-white rounded-full text-[9px] font-bold flex items-center justify-center">
-                {compareCount}
-              </span>
-            )}
-          </button>
-
+        {/* Tablet Navigation Controls (640px - 1023px) - Exclusively User Profile path */}
+        <div className="hidden sm:flex lg:hidden items-center ml-auto">
+          {/* User Profile / Sign In */}
           <div className="shabaautos-dropdown shabaautos-tablet-account-dropdown">
             <button
               onClick={(e) => {
@@ -801,287 +765,42 @@ export const Header: React.FC<HeaderProps> = ({
                   handleNavClick('auth');
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-[#12492f] border border-emerald-300 hover:border-[#12492f] rounded-lg transition-colors cursor-pointer bg-white min-h-[44px]"
-              aria-label={isLoggedIn ? 'Open account profile' : 'Account Login'}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-[#12492f] border border-emerald-300/80 hover:border-[#12492f] rounded-xl transition-all cursor-pointer bg-white hover:bg-emerald-50/50 shadow-2xs min-h-[42px]"
+              aria-label={isLoggedIn ? `Account Profile (${user?.fullName || user?.name || 'User'})` : 'Sign in to account'}
               aria-expanded={isLoggedIn ? activeDropdown === 'tablet-account' : undefined}
             >
-              <User size={14} />
-              <span className="text-[11px]">{isLoggedIn ? 'Profile' : 'Sign In'}</span>
-              {isLoggedIn && <ChevronDown size={11} />}
+              {isLoggedIn && user ? (
+                <div className="flex items-center gap-2">
+                  {user.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.fullName || user.name || 'User'}
+                      className="w-6 h-6 rounded-full object-cover border border-emerald-400"
+                    />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-[#12492f] text-white flex items-center justify-center text-[10px] font-black uppercase">
+                      {(user.fullName || user.name || 'U').charAt(0)}
+                    </div>
+                  )}
+                  <span className="text-xs font-bold text-[#12492f] max-w-[120px] truncate">
+                    {(user.fullName || user.name || 'Profile').split(' ')[0]}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-emerald-100 text-[#0e5c33]">
+                    {user.role}
+                  </span>
+                  <ChevronDown size={13} className="text-[#12492f]" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <User size={15} />
+                  <span className="text-xs font-bold">Sign In</span>
+                </div>
+              )}
             </button>
             {renderAccountPanel('tablet-account')}
           </div>
-
-          {/* Tablet Drawer Button */}
-          <button
-            className="flex items-center gap-1.5 px-3.5 py-2 text-white bg-[#12492f] hover:bg-[#0e3b26] rounded-lg transition-all shadow-2xs cursor-pointer active:scale-95 min-h-[44px]"
-            aria-label={isMenuOpen ? 'Close navigation directory' : 'Open navigation directory'}
-            onClick={() => {
-              if (onToggleMobileMenu) {
-                onToggleMobileMenu();
-              } else {
-                setIsMenuOpen(!isMenuOpen);
-              }
-            }}
-          >
-            {isMenuOpen ? <X size={16} /> : <Menu size={16} />}
-            <span className="text-[11px] font-bold uppercase tracking-wider">Directory</span>
-          </button>
         </div>
       </div>
-
-      {/* Tablet Dedicated Navigation Strip (768px - 1023px) */}
-      <nav
-        className="hidden md:flex lg:hidden bg-white/95 border-t border-[#e8ece7] px-4 py-1.5 items-center justify-between shadow-2xs backdrop-blur-md"
-        aria-label="Tablet sub-navigation"
-      >
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5 w-full">
-          {/* Home */}
-          <button
-            onClick={() => handleNavClick('home')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-              currentScreen === 'home'
-                ? 'bg-[#12492f] text-white shadow-xs'
-                : 'text-[#26372c] hover:bg-emerald-50 hover:text-[#12492f]'
-            }`}
-          >
-            <Home size={13} />
-            <span>Home</span>
-          </button>
-
-          {/* Buy Cars with Tablet Dropdown */}
-          <div className="relative shrink-0">
-            <div
-              className={`flex items-center rounded-lg text-xs font-bold transition-all ${
-                currentScreen === 'buy-cars' || currentScreen === 'car-details' || currentScreen === 'car-details-rav4'
-                  ? 'bg-[#12492f] text-white shadow-xs'
-                  : 'text-[#26372c] hover:bg-emerald-50 hover:text-[#12492f]'
-              }`}
-            >
-              <button
-                onClick={() => handleNavClick('buy-cars')}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer"
-              >
-                <Car size={13} />
-                <span>Buy Cars</span>
-                <span
-                  className={`text-[10px] px-1 py-0.2 rounded font-black ${
-                    currentScreen === 'buy-cars' || currentScreen === 'car-details' || currentScreen === 'car-details-rav4'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-emerald-100 text-[#12492f]'
-                  }`}
-                >
-                  56
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => handleToggleDropdown('tablet-buy', e)}
-                className="pr-2 pl-0.5 py-1.5 cursor-pointer hover:opacity-80"
-                aria-label="Toggle Buy Cars submenu"
-              >
-                <ChevronDown
-                  size={12}
-                  className={`transition-transform duration-200 ${
-                    activeDropdown === 'tablet-buy' ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-            </div>
-
-            {activeDropdown === 'tablet-buy' && (
-              <div className="absolute top-full left-0 mt-1.5 w-[270px] bg-white rounded-xl shadow-xl border border-[#e4e9e3] p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                <button
-                  onClick={() => handleNavClick('buy-cars')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center justify-between"
-                >
-                  <span className="flex items-center gap-2"><Car size={14} className="text-[#158047]" /> All 56 Verified Cars</span>
-                  <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-1.5 py-0.5 rounded">All</span>
-                </button>
-                <button
-                  onClick={() => handleNavClick('car-details-rav4')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <Compass size={14} className="text-[#158047]" />
-                  <span>SUVs & Crossovers (RAV4, Lexus RX)</span>
-                </button>
-                <button
-                  onClick={() => handleNavClick('car-details')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <Sparkles size={14} className="text-[#158047]" />
-                  <span>Sedans & Luxury (Camry, C-Class)</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Rent a Car with Tablet Dropdown */}
-          <div className="relative shrink-0">
-            <div
-              className={`flex items-center rounded-lg text-xs font-bold transition-all ${
-                currentScreen === 'rent-car'
-                  ? 'bg-[#12492f] text-white shadow-xs'
-                  : 'text-[#26372c] hover:bg-emerald-50 hover:text-[#12492f]'
-              }`}
-            >
-              <button
-                onClick={() => handleNavClick('rent-car')}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer"
-              >
-                <Calendar size={13} />
-                <span>Rent a Car</span>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => handleToggleDropdown('tablet-rent', e)}
-                className="pr-2 pl-0.5 py-1.5 cursor-pointer hover:opacity-80"
-                aria-label="Toggle Rent a Car submenu"
-              >
-                <ChevronDown
-                  size={12}
-                  className={`transition-transform duration-200 ${
-                    activeDropdown === 'tablet-rent' ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-            </div>
-
-            {activeDropdown === 'tablet-rent' && (
-              <div className="absolute top-full left-0 mt-1.5 w-[260px] bg-white rounded-xl shadow-xl border border-[#e4e9e3] p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                <button
-                  onClick={() => handleNavClick('rent-car')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <Car size={14} className="text-[#158047]" />
-                  <span>Daily & Weekly Self-Drive</span>
-                </button>
-                <button
-                  onClick={() => handleNavClick('rent-car')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <Plane size={14} className="text-[#158047]" />
-                  <span>Airport Fast-Track Pickups</span>
-                </button>
-                <button
-                  onClick={() => handleNavClick('rent-car')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <ShieldCheck size={14} className="text-[#158047]" />
-                  <span>Chauffeur & Armed Escort</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Import from US with Tablet Dropdown */}
-          <div className="relative shrink-0">
-            <div
-              className={`flex items-center rounded-lg text-xs font-bold transition-all ${
-                currentScreen === 'import-landing' || currentScreen === 'import-form'
-                  ? 'bg-[#12492f] text-white shadow-xs'
-                  : 'text-[#26372c] hover:bg-emerald-50 hover:text-[#12492f]'
-              }`}
-            >
-              <button
-                onClick={() => handleNavClick('import-landing')}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer"
-              >
-                <Ship size={13} />
-                <span>Import US</span>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => handleToggleDropdown('tablet-import', e)}
-                className="pr-2 pl-0.5 py-1.5 cursor-pointer hover:opacity-80"
-                aria-label="Toggle Import submenu"
-              >
-                <ChevronDown
-                  size={12}
-                  className={`transition-transform duration-200 ${
-                    activeDropdown === 'tablet-import' ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-            </div>
-
-            {activeDropdown === 'tablet-import' && (
-              <div className="absolute top-full left-0 mt-1.5 w-[270px] bg-white rounded-xl shadow-xl border border-[#e4e9e3] p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                <button
-                  onClick={() => handleNavClick('import-landing')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <Ship size={14} className="text-[#158047]" />
-                  <span>Direct Import Overview</span>
-                </button>
-                <button
-                  onClick={() => handleNavClick('import-landing')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <Calculator size={14} className="text-[#158047]" />
-                  <span>Customs & Duty Calculator</span>
-                </button>
-                <button
-                  onClick={() => handleNavClick('import-form')}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-emerald-50 hover:text-[#12492f] rounded-lg flex items-center gap-2"
-                >
-                  <FileText size={14} className="text-[#158047]" />
-                  <span>Start Import Wizard</span>
-                </button>
-                <div className="border-t border-gray-100 pt-1 mt-1">
-                  <button
-                    onClick={() => handleNavClick('order-tracking')}
-                    className="w-full text-left px-3 py-2 text-xs font-bold text-[#12492f] hover:bg-emerald-50 rounded-lg flex items-center gap-2"
-                  >
-                    <Clock size={14} />
-                    <span>Track Active Order (SA-IMP-00078)</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Sell Your Car */}
-          <button
-            onClick={() => handleNavClick('sell-car')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-              currentScreen === 'sell-car'
-                ? 'bg-[#12492f] text-white shadow-xs'
-                : 'text-[#26372c] hover:bg-emerald-50 hover:text-[#12492f]'
-            }`}
-          >
-            <DollarSign size={13} />
-            <span>Sell Car</span>
-          </button>
-
-          {/* Car Finder */}
-          <button
-            onClick={() => handleNavClick('find-car')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-              currentScreen === 'find-car'
-                ? 'bg-[#12492f] text-white shadow-xs'
-                : 'text-[#26372c] hover:bg-emerald-50 hover:text-[#12492f]'
-            }`}
-          >
-            <Search size={13} />
-            <span>Car Finder</span>
-          </button>
-
-          {/* Live Order Tracking */}
-          <button
-            onClick={() => handleNavClick('order-tracking')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-              currentScreen === 'order-tracking'
-                ? 'bg-[#12492f] text-white shadow-xs'
-                : 'text-[#26372c] hover:bg-emerald-50 hover:text-[#12492f]'
-            }`}
-          >
-            <Clock size={13} />
-            <span>Track Order</span>
-          </button>
-        </div>
-      </nav>
-
     </header>
   );
 };

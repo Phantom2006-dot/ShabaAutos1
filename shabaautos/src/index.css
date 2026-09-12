@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
 :root {
   --shabaautos-forest: #12492f;
   --shabaautos-leaf: #158047;
@@ -299,14 +303,20 @@ a:active {
 }
 
 .shabaautos-nav {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-self: stretch;
-  align-items: stretch;
-  gap: 2px;
-  margin-left: 8px;
-  justify-content: center;
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .shabaautos-nav {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-self: stretch;
+    align-items: stretch;
+    gap: 2px;
+    margin-left: 8px;
+    justify-content: center;
+  }
 }
 
 @media (min-width: 1280px) {
@@ -369,15 +379,21 @@ a:active {
 }
 
 .shabaautos-header-contact {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  color: var(--shabaautos-text);
-  font-family: 'Inter', sans-serif;
-  font-size: 12px;
-  white-space: nowrap;
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .shabaautos-header-contact {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    color: var(--shabaautos-text);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    white-space: nowrap;
+  }
 }
 
 @media (min-width: 1280px) {
@@ -947,63 +963,64 @@ select.dark-select option,
 }
 
 @media (max-width: 639px) {
-  .rent-mobile-page { display: block !important; min-height: 100vh; padding: .75rem 1rem 6rem; background: #fbfdfb; }
+  .rent-mobile-page { display: block !important; min-height: 100vh; padding: .75rem 1rem 6rem; background: #fbfdfb; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
   .rent-screen > section:not(.rent-mobile-page) { display: none !important; }
   .rent-mobile-topbar { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin-bottom: 1.7rem; }
   .rent-mobile-topbar > button { display: grid; place-items: center; width: 2.35rem; height: 2.35rem; border: 1px solid #e2eae3; border-radius: .75rem; background: #fff; color: #173223; }
   .rent-mobile-topbar > div { flex: 1; text-align: center; }
   .rent-mobile-topbar small, .rent-mobile-topbar strong { display: block; }
-  .rent-mobile-topbar small { color: #0e7c3a; font-size: .55rem; font-weight: 900; letter-spacing: .1em; }
-  .rent-mobile-topbar strong { margin-top: .2rem; color: #16221a; font-size: .88rem; }
-  .rent-mobile-intro p, .rent-mobile-section-head small, .rent-mobile-inventory-head small { margin: 0 0 .45rem; color: #0e7c3a; font-size: .59rem; font-weight: 900; letter-spacing: .12em; }
-  .rent-mobile-intro h1 { margin: 0; color: #101b14; font-size: 2.45rem; line-height: 1; letter-spacing: -.07em; }
+  .rent-mobile-topbar small { color: #0e7c3a; font-size: .55rem; font-weight: 900; letter-spacing: .1em; font-family: 'Inter', sans-serif; }
+  .rent-mobile-topbar strong { margin-top: .2rem; color: #16221a; font-size: .88rem; font-weight: 800; font-family: 'Inter', sans-serif; }
+  .rent-mobile-intro p, .rent-mobile-section-head small, .rent-mobile-inventory-head small { margin: 0 0 .45rem; color: #0e7c3a; font-size: .59rem; font-weight: 900; letter-spacing: .12em; font-family: 'Inter', sans-serif; }
+  .rent-mobile-intro h1 { margin: 0; color: #101b14; font-size: 2.45rem; line-height: 1.02; letter-spacing: -.07em; font-weight: 900; font-family: 'Inter', sans-serif; }
   .rent-mobile-intro h1 span { color: #0e7c3a; }
-  .rent-mobile-intro > small { display: block; max-width: 18rem; margin-top: .7rem; color: #758179; font-size: .78rem; line-height: 1.45; }
-  .rent-mobile-booking-card { margin-top: 1.25rem; padding: 1rem; border-radius: 1.15rem; background: #123f2a; color: #fff; box-shadow: 0 12px 25px rgba(18,73,47,.18); }
+  .rent-mobile-intro > small { display: block; max-width: 18rem; margin-top: .7rem; color: #718077; font-size: .78rem; line-height: 1.45; font-weight: 500; font-family: 'Inter', sans-serif; }
+  .rent-mobile-booking-card { margin-top: 1.25rem; padding: 1rem; border-radius: 1.15rem; background: #123f2a; color: #fff; box-shadow: 0 12px 25px rgba(18,73,47,.18); font-family: 'Inter', sans-serif; }
   .rent-mobile-booking-label { display: flex; align-items: center; gap: .4rem; margin-bottom: .85rem; color: #b9e7c4; font-size: .7rem; font-weight: 900; }
   .rent-mobile-booking-card label { display: block; margin-top: .55rem; }
-  .rent-mobile-booking-card label span { display: block; margin: 0 0 .3rem .1rem; color: #b9cfc0; font-size: .62rem; }
-  .rent-mobile-booking-card select, .rent-mobile-booking-card input { width: 100%; min-height: 2.8rem; padding: 0 .7rem; border: 1px solid rgba(255,255,255,.14); border-radius: .7rem; background: rgba(255,255,255,.1); color: #fff; font-size: .72rem; outline: 0; }
+  .rent-mobile-booking-card label span { display: block; margin: 0 0 .3rem .1rem; color: #b9cfc0; font-size: .62rem; font-weight: 600; }
+  .rent-mobile-booking-card select, .rent-mobile-booking-card input { width: 100%; min-height: 2.8rem; padding: 0 .7rem; border: 1px solid rgba(255,255,255,.14); border-radius: .7rem; background: rgba(255,255,255,.1); color: #fff; font-size: .72rem; outline: 0; font-family: 'Inter', sans-serif; }
   .rent-mobile-booking-card option { color: #17251d; }
   .rent-mobile-date-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; }
-  .rent-mobile-booking-card > button { display: flex; align-items: center; justify-content: center; gap: .35rem; width: 100%; min-height: 2.9rem; margin-top: .85rem; border: 0; border-radius: .75rem; background: #b6ebc3; color: #123f2a; font-size: .75rem; font-weight: 900; }
+  .rent-mobile-booking-card > button { display: flex; align-items: center; justify-content: center; gap: .35rem; width: 100%; min-height: 2.9rem; margin-top: .85rem; border: 0; border-radius: .75rem; background: #b6ebc3; color: #123f2a; font-size: .75rem; font-weight: 900; font-family: 'Inter', sans-serif; }
   .rent-mobile-section-head, .rent-mobile-inventory-head { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 1.7rem; }
-  .rent-mobile-section-head h2, .rent-mobile-inventory-head h2 { margin: 0; color: #14231a; font-size: 1.15rem; letter-spacing: -.04em; }
+  .rent-mobile-section-head h2, .rent-mobile-inventory-head h2 { margin: 0; color: #14231a; font-size: 1.15rem; letter-spacing: -.04em; font-weight: 900; font-family: 'Inter', sans-serif; }
   .rent-mobile-section-head > svg { color: #0e7c3a; }
   .rent-mobile-categories { display: flex; gap: .45rem; overflow-x: auto; margin: .75rem -1rem 0; padding: 0 1rem .3rem; scrollbar-width: none; }
   .rent-mobile-categories::-webkit-scrollbar { display: none; }
-  .rent-mobile-categories button { flex: 0 0 auto; padding: .55rem .85rem; border: 1px solid #e1e9e2; border-radius: 99px; background: #fff; color: #6b786f; font-size: .68rem; font-weight: 800; }
+  .rent-mobile-categories button { flex: 0 0 auto; padding: .55rem .85rem; border: 1px solid #e1e9e2; border-radius: 99px; background: #fff; color: #6b786f; font-size: .68rem; font-weight: 800; font-family: 'Inter', sans-serif; }
   .rent-mobile-categories button.is-active { border-color: #0e7c3a; background: #0e7c3a; color: #fff; }
   .rent-mobile-inventory-head { margin-top: 1.35rem; }
-  .rent-mobile-inventory-head > span { color: #718078; font-size: .68rem; font-weight: 800; }
+  .rent-mobile-inventory-head > span { color: #718078; font-size: .68rem; font-weight: 800; font-family: 'Inter', sans-serif; }
   .rent-mobile-car-list { display: grid; gap: .75rem; margin-top: .75rem; }
-  .rent-mobile-car-card { overflow: hidden; border: 1px solid #e3ebe5; border-radius: 1rem; background: #fff; box-shadow: 0 6px 18px rgba(18,73,47,.06); }
+  .rent-mobile-car-card { overflow: hidden; border: 1px solid #e3ebe5; border-radius: 1rem; background: #fff; box-shadow: 0 6px 18px rgba(18,73,47,.06); font-family: 'Inter', sans-serif; }
   .rent-mobile-car-image { position: relative; height: 10rem; }
   .rent-mobile-car-image img { width: 100%; height: 100%; object-fit: cover; }
-  .rent-mobile-car-image span, .rent-mobile-car-image b { position: absolute; top: .65rem; padding: .3rem .5rem; border-radius: .45rem; font-size: .6rem; }
-  .rent-mobile-car-image span { left: .65rem; background: #123f2a; color: #fff; }
-  .rent-mobile-car-image b { right: .65rem; display: inline-flex; align-items: center; gap: .2rem; background: #fff; color: #c27b00; }
+  .rent-mobile-car-image span, .rent-mobile-car-image b { position: absolute; top: .65rem; padding: .3rem .5rem; border-radius: .45rem; font-size: .6rem; font-family: 'Inter', sans-serif; }
+  .rent-mobile-car-image span { left: .65rem; background: #123f2a; color: #fff; font-weight: 700; }
+  .rent-mobile-car-image b { right: .65rem; display: inline-flex; align-items: center; gap: .2rem; background: #fff; color: #c27b00; font-weight: 700; }
   .rent-mobile-car-body { display: flex; justify-content: space-between; gap: .6rem; padding: .8rem .85rem .45rem; }
-  .rent-mobile-car-body h3 { margin: 0; color: #16221a; font-size: .84rem; }
-  .rent-mobile-car-body p { margin: .3rem 0 0; color: #7b877e; font-size: .61rem; }
-  .rent-mobile-car-body > strong { color: #0e7c3a; font-size: .84rem; white-space: nowrap; }
+  .rent-mobile-car-body h3 { margin: 0; color: #16221a; font-size: .84rem; font-weight: 800; font-family: 'Inter', sans-serif; }
+  .rent-mobile-car-body p { margin: .3rem 0 0; color: #7b877e; font-size: .61rem; font-weight: 500; font-family: 'Inter', sans-serif; }
+  .rent-mobile-car-body > strong { color: #0e7c3a; font-size: .84rem; font-weight: 900; white-space: nowrap; font-family: 'Inter', sans-serif; }
   .rent-mobile-car-body > strong small { color: #7b877e; font-size: .58rem; font-weight: 500; }
   .rent-mobile-car-footer { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .55rem .85rem .8rem; }
-  .rent-mobile-car-footer > span { display: inline-flex; align-items: center; gap: .25rem; color: #0e7c3a; font-size: .6rem; font-weight: 800; }
-  .rent-mobile-car-footer button { padding: .55rem .8rem; border: 0; border-radius: .65rem; background: #123f2a; color: #fff; font-size: .65rem; font-weight: 900; }
-  .rent-mobile-loading { margin-top: .8rem; padding: 2rem 1rem; border: 1px solid #e3ebe5; border-radius: 1rem; background: #fff; color: #758179; font-size: .78rem; text-align: center; }
-  .rent-mobile-trust { display: flex; align-items: center; gap: .65rem; margin-top: 1rem; padding: .8rem; border: 1px solid #dcece0; border-radius: .9rem; background: #f0f9f2; color: #0e7c3a; }
+  .rent-mobile-car-footer > span { display: inline-flex; align-items: center; gap: .25rem; color: #0e7c3a; font-size: .6rem; font-weight: 800; font-family: 'Inter', sans-serif; }
+  .rent-mobile-car-footer button { padding: .55rem .8rem; border: 0; border-radius: .65rem; background: #123f2a; color: #fff; font-size: .65rem; font-weight: 900; font-family: 'Inter', sans-serif; }
+  .rent-mobile-loading { margin-top: .8rem; padding: 2rem 1rem; border: 1px solid #e3ebe5; border-radius: 1rem; background: #fff; color: #758179; font-size: .78rem; text-align: center; font-family: 'Inter', sans-serif; }
+  .rent-mobile-trust { display: flex; align-items: center; gap: .65rem; margin-top: 1rem; padding: .8rem; border: 1px solid #dcece0; border-radius: .9rem; background: #f0f9f2; color: #0e7c3a; font-family: 'Inter', sans-serif; }
   .rent-mobile-trust div { flex: 1; }
   .rent-mobile-trust strong, .rent-mobile-trust small { display: block; }
-  .rent-mobile-trust strong { color: #173223; font-size: .68rem; }
-  .rent-mobile-trust small { margin-top: .2rem; color: #718078; font-size: .59rem; line-height: 1.35; }
+  .rent-mobile-trust strong { color: #173223; font-size: .68rem; font-weight: 800; }
+  .rent-mobile-trust small { margin-top: .2rem; color: #718078; font-size: .59rem; line-height: 1.35; font-weight: 500; }
 }
 
-/* Keep the rental experience on the same Inter UI typeface as the rest of the product. */
+/* Ensure the rental experience on mobile and desktop has the exact same uniform font as the rest of the product */
 .rent-screen,
-.rent-screen * {
-  font-family: 'Inter', sans-serif;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+.rent-screen *,
+.rent-mobile-page,
+.rent-mobile-page * {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
 }
 
 @media (max-width: 639px) {
@@ -1013,12 +1030,13 @@ select.dark-select option,
   .auth-screen > div:nth-of-type(3) > div > div:last-child { display: block !important; width: 100% !important; }
 }
 
-/* Professional product typography: Inter is the site-wide UI font. */
+/* Professional product typography: Inter is the uniform site-wide UI font */
+html,
 body,
+#root,
 button,
 input,
 select,
 textarea {
-  font-family: 'Inter', sans-serif;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }

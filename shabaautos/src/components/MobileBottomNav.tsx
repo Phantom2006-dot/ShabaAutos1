@@ -41,10 +41,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   return (
     <nav
       id="mobile-bottom-nav"
-      className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 backdrop-blur-xl border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] px-1 pt-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] min-h-[58px] w-full max-w-full overflow-hidden"
-      aria-label="Mobile application bottom navigation"
+      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white/95 backdrop-blur-xl border-t border-slate-200/90 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] px-1 pt-1 pb-[max(env(safe-area-inset-bottom),0.5rem)] min-h-[58px] w-full max-w-full overflow-hidden"
+      aria-label="Mobile and tablet application bottom navigation"
     >
-      <div className="grid grid-cols-5 items-center max-w-md mx-auto w-full">
+      <div className="grid grid-cols-5 items-center max-w-md md:max-w-xl mx-auto w-full">
         {/* Tab 1: Home */}
         <button
           type="button"

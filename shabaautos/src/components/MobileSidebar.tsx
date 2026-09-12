@@ -154,7 +154,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
       {/* Slide-out Sidebar Drawer Panel */}
       <aside
         ref={sidebarRef}
-        className="absolute inset-y-0 right-0 w-[min(88vw,380px)] max-w-full h-full bg-white shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-right duration-250 z-10 overflow-hidden"
+        className="absolute inset-y-0 right-0 w-[min(88vw,380px)] md:w-[420px] max-w-full h-full bg-white shadow-2xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] animate-in slide-in-from-right duration-250 z-10 overflow-hidden"
       >
         {/* Drawer Top Header */}
         <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-[#fbfcfa] shrink-0">
