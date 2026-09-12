@@ -1,6 +1,5 @@
 -- ============================================================================
--- SHABAAUTOS POSTGRESQL / NEON DB INITIALIZATION SCHEMA
--- Run this SQL in your Neon DB SQL Editor (https://console.neon.tech)
+-- SHABAAUTOS POSTGRESQL / NEON DB SCHEMA DEFINITION
 -- ============================================================================
 
 -- 1. Users & Roles
@@ -16,13 +15,6 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- Clerk is the production identity provider. Keep this migration idempotent
--- so it works for both a fresh database and an existing Neon database.
-ALTER TABLE users ADD COLUMN IF NOT EXISTS clerk_id VARCHAR(255);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_clerk_id
-  ON users(clerk_id)
-  WHERE clerk_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -79,7 +71,6 @@ CREATE TABLE IF NOT EXISTS vehicles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Indexes for lightning-fast showroom queries & filtering
 CREATE INDEX IF NOT EXISTS idx_vehicles_make ON vehicles(make);
 CREATE INDEX IF NOT EXISTS idx_vehicles_model ON vehicles(model);
 CREATE INDEX IF NOT EXISTS idx_vehicles_year ON vehicles(year);
