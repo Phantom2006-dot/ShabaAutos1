@@ -133,6 +133,129 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const renderAccountPanel = (dropdownName: string) => {
+    if (activeDropdown !== dropdownName || !isLoggedIn || !user) return null;
+
+    return (
+      <div className="shabaautos-dropdown-panel shabaautos-account-dropdown-panel">
+        <div className="px-3 py-2 border-b border-[#e4e9e3] mb-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold text-[#12492f] truncate min-w-0">
+              {user.fullName}
+            </span>
+            <span className={`shabaautos-account-role text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase shrink-0 ${
+              user.role === 'admin'
+                ? 'bg-purple-100 text-purple-800'
+                : user.role === 'staff'
+                ? 'bg-blue-100 text-blue-800'
+                : 'bg-emerald-100 text-[#12492f]'
+            }`}>
+              {user.role}
+            </span>
+          </div>
+          <div className="text-[10px] text-gray-500 truncate mt-0.5">
+            {user.email}
+          </div>
+          {user.phone && (
+            <div className="text-[10px] text-gray-400 font-mono mt-0.2 truncate">
+              {user.phone}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-0.5">
+          <button
+            onClick={() => handleNavClick('order-tracking')}
+            className="shabaautos-dropdown-item"
+          >
+            <Clock size={14} className="text-[#158047] shrink-0" />
+            <span>Track Order (SA-IMP-00078)</span>
+          </button>
+
+          <button
+            onClick={() => handleNavClick('saved-compare')}
+            className="shabaautos-dropdown-item justify-between"
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Heart size={14} className="text-[#158047] shrink-0" />
+              <span>Saved Vehicles</span>
+            </span>
+            <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-1.5 py-0.2 rounded shrink-0">
+              {savedCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleNavClick('saved-compare')}
+            className="shabaautos-dropdown-item justify-between"
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Scale size={14} className="text-[#158047] shrink-0" />
+              <span>Compare List</span>
+            </span>
+            <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-1.5 py-0.2 rounded shrink-0">
+              {compareCount}
+            </span>
+          </button>
+
+          {(user.role === 'staff' || user.role === 'admin') && (
+            <button
+              onClick={() => handleNavClick('operations-dashboard')}
+              className="shabaautos-dropdown-item font-bold text-[#12492f]"
+            >
+              <LayoutDashboard size={14} className="text-[#158047] shrink-0" />
+              <span>{user.role === 'admin' ? 'Admin Operations' : 'Staff Workspace'}</span>
+            </button>
+          )}
+
+          {isDemoMode && (
+            <div className="border-t border-[#e4e9e3] pt-1.5 mt-1.5 px-2">
+              <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                Switch Demo Persona
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                {(['customer', 'staff', 'admin'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => switchDemoRole(r)}
+                    className={`px-1.5 py-1 text-[10px] font-bold rounded capitalize cursor-pointer transition-all ${
+                      user.role === r
+                        ? 'bg-[#12492f] text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="border-t border-[#e4e9e3] pt-1 mt-1">
+            <button
+              onClick={() => handleNavClick('auth')}
+              className="shabaautos-dropdown-item font-bold text-[#12492f]"
+            >
+              <User size={14} className="shrink-0" />
+              <span>Account Details &amp; Security</span>
+            </button>
+            <button
+              onClick={async () => {
+                await signOut();
+                setActiveDropdown(null);
+              }}
+              className="shabaautos-dropdown-item font-bold text-red-600 hover:bg-red-50 hover:text-red-700"
+            >
+              <LogOut size={14} className="shrink-0" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <header className="shabaautos-navbar" ref={navContainerRef}>
       <div className="shabaautos-navbar-inner">
@@ -579,7 +702,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* User Sign In / Profile with Dropdown */}
           <div
-            className="shabaautos-dropdown"
+            className="shabaautos-dropdown shabaautos-account-dropdown"
             onMouseEnter={() => handleMouseEnter('account')}
             onMouseLeave={handleMouseLeave}
           >
@@ -601,7 +724,7 @@ export const Header: React.FC<HeaderProps> = ({
                     {user.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2) || 'SA'}
                   </div>
                 )}
-                <span className="text-[11px] font-semibold text-[#12492f] hidden sm:inline max-w-[90px] truncate">
+                <span className="shabaautos-account-name text-[11px] font-semibold text-[#12492f] hidden sm:inline max-w-[90px] truncate">
                   {user.fullName.split(' ')[0]}
                 </span>
                 <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase ${
@@ -626,126 +749,7 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Account Dropdown Panel */}
-            {activeDropdown === 'account' && isLoggedIn && user && (
-              <div className="shabaautos-dropdown-panel right-0 left-auto w-[260px]">
-                <div className="px-3 py-2 border-b border-[#e4e9e3] mb-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-[#12492f] truncate">
-                      {user.fullName}
-                    </span>
-                    <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase ${
-                      user.role === 'admin'
-                        ? 'bg-purple-100 text-purple-800'
-                        : user.role === 'staff'
-                        ? 'bg-blue-100 text-blue-800'
-                        : 'bg-emerald-100 text-[#12492f]'
-                    }`}>
-                      {user.role}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-gray-500 truncate mt-0.5">
-                    {user.email}
-                  </div>
-                  {user.phone && (
-                    <div className="text-[10px] text-gray-400 font-mono mt-0.2">
-                      {user.phone}
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-0.5">
-                  <button
-                    onClick={() => handleNavClick('order-tracking')}
-                    className="shabaautos-dropdown-item"
-                  >
-                    <Clock size={14} className="text-[#158047]" />
-                    <span>Track Order (SA-IMP-00078)</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleNavClick('saved-compare')}
-                    className="shabaautos-dropdown-item justify-between"
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <Heart size={14} className="text-[#158047]" />
-                      <span>Saved Vehicles</span>
-                    </span>
-                    <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-1.5 py-0.2 rounded">
-                      {savedCount}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => handleNavClick('saved-compare')}
-                    className="shabaautos-dropdown-item justify-between"
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <Scale size={14} className="text-[#158047]" />
-                      <span>Compare List</span>
-                    </span>
-                    <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-1.5 py-0.2 rounded">
-                      {compareCount}
-                    </span>
-                  </button>
-
-                  {(user.role === 'staff' || user.role === 'admin') && (
-                    <button
-                      onClick={() => handleNavClick('operations-dashboard')}
-                      className="shabaautos-dropdown-item font-bold text-[#12492f]"
-                    >
-                      <LayoutDashboard size={14} className="text-[#158047]" />
-                      <span>{user.role === 'admin' ? 'Admin Operations' : 'Staff Workspace'}</span>
-                    </button>
-                  )}
-
-                  {/* Demo Role Switcher in dropdown */}
-                  {isDemoMode && (
-                    <div className="border-t border-[#e4e9e3] pt-1.5 mt-1.5 px-2">
-                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                        Switch Demo Persona
-                      </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        {(['customer', 'staff', 'admin'] as const).map((r) => (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => switchDemoRole(r)}
-                            className={`px-1.5 py-1 text-[10px] font-bold rounded capitalize cursor-pointer transition-all ${
-                              user.role === r
-                                ? 'bg-[#12492f] text-white'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
-                          >
-                            {r}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="border-t border-[#e4e9e3] pt-1 mt-1">
-                    <button
-                      onClick={() => handleNavClick('auth')}
-                      className="shabaautos-dropdown-item font-bold text-[#12492f]"
-                    >
-                      <User size={14} />
-                      <span>Account Details & Security</span>
-                    </button>
-                    <button
-                      onClick={async () => {
-                        await signOut();
-                        setActiveDropdown(null);
-                      }}
-                      className="shabaautos-dropdown-item font-bold text-red-600 hover:bg-red-50 hover:text-red-700"
-                    >
-                      <LogOut size={14} />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {renderAccountPanel('account')}
           </div>
         </div>
 
@@ -788,14 +792,25 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          <button
-            onClick={() => handleNavClick('auth')}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-[#12492f] border border-emerald-300 hover:border-[#12492f] rounded-lg transition-colors cursor-pointer bg-white min-h-[44px]"
-            aria-label="Account Login"
-          >
-            <User size={14} />
-            <span className="text-[11px]">{isLoggedIn ? 'Account' : 'Sign In'}</span>
-          </button>
+          <div className="shabaautos-dropdown shabaautos-tablet-account-dropdown">
+            <button
+              onClick={(e) => {
+                if (isLoggedIn && user) {
+                  handleToggleDropdown('tablet-account', e);
+                } else {
+                  handleNavClick('auth');
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-[#12492f] border border-emerald-300 hover:border-[#12492f] rounded-lg transition-colors cursor-pointer bg-white min-h-[44px]"
+              aria-label={isLoggedIn ? 'Open account profile' : 'Account Login'}
+              aria-expanded={isLoggedIn ? activeDropdown === 'tablet-account' : undefined}
+            >
+              <User size={14} />
+              <span className="text-[11px]">{isLoggedIn ? 'Profile' : 'Sign In'}</span>
+              {isLoggedIn && <ChevronDown size={11} />}
+            </button>
+            {renderAccountPanel('tablet-account')}
+          </div>
 
           {/* Tablet Drawer Button */}
           <button

@@ -517,6 +517,7 @@ a:active {
   padding: 8px;
   animation: dropdownFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: top left;
+  max-width: calc(100vw - 2rem);
 }
 
 @keyframes dropdownFadeIn {
@@ -547,6 +548,31 @@ a:active {
   cursor: pointer;
   transition: all 0.12s ease;
   white-space: nowrap;
+}
+
+.shabaautos-account-dropdown-panel {
+  right: 0;
+  left: auto;
+  width: min(260px, calc(100vw - 2rem));
+  max-height: min(520px, calc(100vh - 6rem));
+  overflow-x: hidden;
+  overflow-y: auto;
+  transform-origin: top right;
+}
+
+.shabaautos-account-dropdown-panel .shabaautos-dropdown-item {
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.shabaautos-account-dropdown-panel .shabaautos-dropdown-item > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shabaautos-tablet-account-dropdown .shabaautos-account-dropdown-panel {
+  width: min(280px, calc(100vw - 2rem));
 }
 
 .shabaautos-dropdown-item:hover {
@@ -971,6 +997,13 @@ select.dark-select option,
   .rent-mobile-trust strong, .rent-mobile-trust small { display: block; }
   .rent-mobile-trust strong { color: #173223; font-size: .68rem; }
   .rent-mobile-trust small { margin-top: .2rem; color: #718078; font-size: .59rem; line-height: 1.35; }
+}
+
+/* Keep the rental experience on the same Inter UI typeface as the rest of the product. */
+.rent-screen,
+.rent-screen * {
+  font-family: 'Inter', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
 @media (max-width: 639px) {
