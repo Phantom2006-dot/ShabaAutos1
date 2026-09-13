@@ -7,7 +7,7 @@ The repository is prepared for a split deployment: the Vite/React frontend can r
 ## Vercel frontend
 
 1. Import the GitHub repository into Vercel.
-2. Use the repository root as the project root.
+2. Set the Vercel **Root Directory** to `shabaautos` (the frontend package lives there).
 3. Set the build command to `npm run build:frontend`.
 4. Set the output directory to `dist`.
 5. Add `VITE_CLERK_PUBLISHABLE_KEY` and `VITE_API_BASE_URL=https://YOUR-FLY-APP.fly.dev` as production environment variables.
@@ -18,12 +18,12 @@ The committed `vercel.json` supplies the Vite build and SPA fallback configurati
 
 ## Fly.io backend
 
-Install and authenticate the Fly CLI, then replace the placeholder app name in `fly.toml`:
+Install and authenticate the Fly CLI, then deploy from the `shabaautos` directory:
 
 ```bash
+cd shabaautos
 fly auth login
 fly apps create shabaautos-api
-# Edit fly.toml: app = "shabaautos-api"
 fly secrets set \
   DATABASE_URL="postgresql://..." \
   VITE_CLERK_PUBLISHABLE_KEY="pk_..." \
@@ -36,6 +36,8 @@ fly secrets set \
 fly deploy
 fly status
 ```
+
+If `shabaautos-api` is already taken in your Fly organization, choose another globally unique app name and update the `app` value in `fly.toml` before running `fly apps create`.
 
 ### Fly.io secrets to supply
 

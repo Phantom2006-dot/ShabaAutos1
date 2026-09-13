@@ -1,0 +1,44 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "io4u468AxCYvSKakxhLGU"
+uri = "file://shabaautos/preview/shabaautos-desktop-account.jpg"
+type = "image"
+title = "ShabaAutos desktop preview"
+description = "Desktop homepage at 1440px with the profile dropdown open; the panel remains inside the viewport."
+logical_id = "b4ebddc6-b712-4327-bf5c-b6240a4b28d8"
+content_hash = "sha256:8247c0a4477a0bc12e6e7d1a31d85b3be9c713c312e6ed67d7e20e78935f1eca"
+size = 148300
+mtime_ms = 1789263040573
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:b8aec02a-d604-4f7a-a386-e394be6971d3/b4ebddc6-b712-4327-bf5c-b6240a4b28d8/777215b8-e475-4ec8-afcc-24ffe052b5ab"
+storage_version_token = "1789263061825910"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "LgCujnRXINnYff1FLEIBx"
+uri = "file://shabaautos/preview/shabaautos-tablet-account.jpg"
+type = "image"
+title = "ShabaAutos tablet preview"
+description = "Tablet homepage at 820px with the responsive profile dropdown open and bottom navigation visible."
+logical_id = "e69a1759-0d25-4767-acbd-913e61ff83f3"
+content_hash = "sha256:d28735e2a72436f0bca212d88cae640d080f46679c4baf7917061f3730ef7b09"
+size = 116115
+mtime_ms = 1789263043189
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:b8aec02a-d604-4f7a-a386-e394be6971d3/e69a1759-0d25-4767-acbd-913e61ff83f3/10425ce5-46e3-4d77-8625-b231e731740c"
+storage_version_token = "1789263062473479"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "YEEk0qrUo_rwFEW19hPwX"
+uri = "file://shabaautos/preview/shabaautos-mobile-rent.jpg"
+type = "image"
+title = "ShabaAutos mobile rental preview"
+description = "Mobile rental screen at 390px showing the Inter-styled layout, trip planner, categories, and bottom navigation."
+logical_id = "1adc18da-3bce-4a49-9927-56fb6458c31b"
+content_hash = "sha256:17103aaae80139b11f73e43f69e3b448781ebe6897377d3e341a0a1c1de39596"
+size = 48671
+mtime_ms = 1789263045841
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:b8aec02a-d604-4f7a-a386-e394be6971d3/1adc18da-3bce-4a49-9927-56fb6458c31b/07767235-03e1-4d47-b682-28705023eb60"
+storage_version_token = "1789263063148287"
+content_type = "image/jpeg"

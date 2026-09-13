@@ -1,4 +1,4 @@
-app = "replace-with-your-shabaautos-fly-app"
+app = "shabaautos-api"
 primary_region = "jnb"
 
 [build]

@@ -11,7 +11,7 @@ import { handleClerkWebhook } from './server/routes/webhooks';
 import { normalizeNigerianPhone } from './server/utils/phone';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 app.use((req: Request, res: Response, next) => {
   const requestId = req.header('x-request-id') || crypto.randomUUID();

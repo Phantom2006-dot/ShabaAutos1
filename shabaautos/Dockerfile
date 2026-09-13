@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --no-audit --no-fund
 COPY . .
 RUN npm run build
 
@@ -10,7 +10,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
 COPY --from=build /app/package*.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+RUN npm install --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/neon_schema.sql ./neon_schema.sql
 EXPOSE 8080
