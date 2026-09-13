@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ShabaAutos"
+description = "Nigeria's automotive marketplace for buying, renting, importing, and selling verified quality vehicles."
+version = "1.0.0"
+id = "artifacts/shabaautos"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/", "/api" ]
+localPort = 3000
+
+[services.development]
+run = "cd ../../shabaautos && USE_SQLITE=true DEMO_MODE=true NODE_ENV=development DISABLE_HMR=true npm run dev"
+
+[services.production]
+build = [ "npm", "--prefix", "shabaautos", "run", "build:frontend" ]
+serve = "static"
+publicDir = "shabaautos/dist"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "3000"
+BASE_PATH = "/"
