@@ -64,7 +64,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const isDark = variant === 'dark';
 
   return (
-    <div className={`relative ${className}`} ref={containerRef}>
+    <div className={`relative ${isOpen ? 'z-50' : 'z-10'} ${className}`} ref={containerRef}>
       {label && (
         <label
           htmlFor={id}
@@ -115,10 +115,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       {isOpen && (
         <div
           role="listbox"
-          className={`absolute left-0 right-0 mt-1.5 max-h-60 overflow-y-auto rounded-xl p-1.5 z-50 shadow-xl border ${
+          className={`absolute left-0 right-0 mt-1.5 max-h-60 overflow-y-auto rounded-xl p-1.5 z-[100] shadow-2xl border ${
             isDark
               ? 'bg-slate-900 text-white border-slate-700/80 shadow-black/50'
-              : 'bg-white text-gray-800 border-[#d4ded8] shadow-emerald-950/10'
+              : 'bg-white text-gray-800 border-[#d4ded8] shadow-emerald-950/20'
           } animate-in fade-in zoom-in-95 duration-100`}
         >
           {normalizedOptions.map((option) => {

@@ -123,7 +123,8 @@ export type ScreenId =
   | 'saved-compare'
   | 'order-tracking'
   | 'operations-dashboard'
-  | 'auth';
+  | 'auth'
+  | 'profile';
 
 export type AppUserRole = 'customer' | 'staff' | 'admin';
 

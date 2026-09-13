@@ -14,6 +14,7 @@ import { SavedCompareScreen } from './views/SavedCompareScreen';
 import { OrderTrackingScreen } from './views/OrderTrackingScreen';
 import { AuthModalScreen } from './views/AuthModalScreen';
 import { OperationsDashboardScreen } from './views/OperationsDashboardScreen';
+import { MobileProfileScreen } from './views/MobileProfileScreen';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSidebar } from './components/MobileSidebar';
 
@@ -147,6 +148,13 @@ export default function App() {
             onNavigate={handleNavigate}
             onClose={() => setCurrentScreen(previousScreen)}
             previousScreen={previousScreen}
+          />
+        )}
+
+        {currentScreen === 'profile' && (
+          <MobileProfileScreen
+            onNavigate={handleNavigate}
+            savedCount={savedCarIds.length}
           />
         )}
       </main>

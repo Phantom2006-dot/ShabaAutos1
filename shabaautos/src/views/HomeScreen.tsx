@@ -5,6 +5,7 @@ import {
   Truck,
   SlidersHorizontal,
   ChevronRight,
+  ChevronLeft,
   Heart,
   ShieldCheck,
   Fuel,
@@ -22,10 +23,14 @@ import {
   Bookmark,
   WalletCards,
   CircleHelp,
+  Sparkles,
 } from 'lucide-react';
 import { Car, ScreenId } from '../types';
 import { CustomSelect } from '../components/CustomSelect';
 import { fetchVehicles } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
+import bmwHeroBlack from '../assets/images/bmw_hero_coupe_1789257165323.jpg';
+import bmwHeroSilver from '../assets/images/bmw_silver_coupe_1789257180258.jpg';
 
 interface HomeScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -40,6 +45,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   savedCarIds = [],
   onToggleSaveCar = (_carId: string) => {},
 }) => {
+  const { user, isSignedIn } = useAuthUser();
   const [heroTab, setHeroTab] = useState<'buy' | 'rent' | 'import'>('buy');
   const [make, setMake] = useState('Select Make');
   const [model, setModel] = useState('Select Model');
@@ -49,6 +55,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [isLoadingPopularCars, setIsLoadingPopularCars] = useState(true);
   const [mobileHeroSlide, setMobileHeroSlide] = useState(0);
   const [mobileSearch, setMobileSearch] = useState('');
+  const [heroSlide, setHeroSlide] = useState(0);
+  const [isHeroCarouselHovered, setIsHeroCarouselHovered] = useState(false);
+
+  const heroSlides = [
+    {
+      image: bmwHeroBlack,
+      alt: 'Black Futuristic BMW Concept Coupe',
+      title: 'BMW Vision Concept Coupe',
+      subtitle: 'Precision Aerodynamics & Electric Performance',
+      tag: 'Flagship Edition',
+    },
+    {
+      image: bmwHeroSilver,
+      alt: 'Silver BMW M4 Sports Coupe',
+      title: 'BMW M-Series Coupe',
+      subtitle: 'Dynamic Twin-Turbo Driving Excellence',
+      tag: 'Ready to Import & Rent',
+    },
+  ];
 
   useEffect(() => {
     let active = true;
@@ -84,6 +109,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (isHeroCarouselHovered) return;
+    const timer = window.setInterval(() => {
+      setHeroSlide((current) => (current + 1) % heroSlides.length);
+    }, 5500);
+    return () => window.clearInterval(timer);
+  }, [isHeroCarouselHovered, heroSlides.length]);
+
   const handleHeroSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (heroTab === 'rent') {
@@ -106,10 +139,48 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <Bell className="w-5 h-5" />
             <span className="home-notification-dot">3</span>
           </button>
-          <button type="button" onClick={() => onNavigate('auth')} className="home-mobile-signin">
-            <UserRound className="w-4 h-4" />
-            Sign In
-          </button>
+          {isSignedIn && user ? (
+            <button
+              type="button"
+              onClick={() => onNavigate('profile')}
+              className="home-mobile-profile-button"
+              aria-label={`Open profile for ${user.fullName || 'User'}`}
+            >
+              <div className="home-mobile-profile-avatar">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.fullName || 'User Profile'}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span>
+                    {user.fullName
+                      ? user.fullName
+                          .split(' ')
+                          .map((n) => n[0])
+                          .join('')
+                          .slice(0, 2)
+                      : 'SA'}
+                  </span>
+                )}
+                <span className="home-mobile-profile-indicator" />
+              </div>
+              <div className="home-mobile-profile-meta">
+                <strong className="home-mobile-profile-name truncate">
+                  {user.fullName ? user.fullName.split(' ')[0] : 'Profile'}
+                </strong>
+                <span className="home-mobile-profile-role uppercase">
+                  {user.role || 'User'}
+                </span>
+              </div>
+            </button>
+          ) : (
+            <button type="button" onClick={() => onNavigate('auth')} className="home-mobile-signin">
+              <UserRound className="w-4 h-4" />
+              Sign In
+            </button>
+          )}
         </div>
       </div>
       <section className="home-mobile-hero sm:hidden">
@@ -167,17 +238,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <div className="mobile-feature-row"><button type="button" onClick={() => onNavigate('find-car')}><Zap className="w-4 h-4" /> Find a car for me</button><button type="button" onClick={() => onNavigate('sell-car')}><WalletCards className="w-4 h-4" /> Sell your car</button><button type="button" onClick={() => onNavigate('saved-compare')}><CircleHelp className="w-4 h-4" /> Saved cars</button></div>
       </section>
       {/* Hero Section matching web11.png */}
-      <section className="home-desktop-hero relative overflow-hidden bg-gradient-to-b from-[#eef3f0] to-[#f4f7f5] pt-10 sm:pt-14 lg:pt-16 pb-16 sm:pb-20 border-b border-slate-200/80">
-        <div className="shaba-ambient shaba-ambient--one" aria-hidden="true" />
-        <div className="shaba-ambient shaba-ambient--two" aria-hidden="true" />
-        {/* Background Scenic Landscape */}
-        <div className="absolute inset-0 z-0 opacity-25 pointer-events-none">
-          <img
-            src="https://images.unsplash.com/photo-1477959858617-67f30bc75b82?auto=format&fit=crop&w=2000&q=80"
-            alt="Scenic City Waterfront"
-            className="w-full h-full object-cover object-center mix-blend-multiply"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#f4f7f5] via-[#f4f7f5]/80 to-transparent" />
+      <section className="home-desktop-hero relative z-30 bg-gradient-to-b from-[#eef3f0] to-[#f4f7f5] pt-10 sm:pt-14 lg:pt-16 pb-10 sm:pb-12 lg:pb-14 border-b border-slate-200/80">
+        {/* Background Scenic Landscape & Ambient Lights (contained with overflow-hidden) */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="shaba-ambient shaba-ambient--one" aria-hidden="true" />
+          <div className="shaba-ambient shaba-ambient--two" aria-hidden="true" />
+          <div className="absolute inset-0 opacity-25">
+            <img
+              src="https://images.unsplash.com/photo-1477959858617-67f30bc75b82?auto=format&fit=crop&w=2000&q=80"
+              alt="Scenic City Waterfront"
+              className="w-full h-full object-cover object-center mix-blend-multiply"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#f4f7f5] via-[#f4f7f5]/80 to-transparent" />
+          </div>
         </div>
 
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -233,14 +306,94 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </div>
             </div>
 
-            {/* Right Column: Hero Car Photo (Black SUV overlooking City Skyline) matching web11.png */}
+            {/* Right Column: Hero Car Carousel (BMW Coupe Edition) - Compact & Elegant */}
             <div className="lg:col-span-6 flex justify-center relative">
-              <div className="relative w-full max-w-[540px]">
-                <img
-                  src="https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=1200&q=85"
-                  alt="Black Luxury SUV on Coastal Road"
-                  className="w-full h-auto object-contain drop-shadow-2xl rounded-2xl"
-                />
+              <div
+                className="relative w-full max-w-[540px] aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden shadow-2xl border border-slate-200/80 bg-slate-900 group"
+                onMouseEnter={() => setIsHeroCarouselHovered(true)}
+                onMouseLeave={() => setIsHeroCarouselHovered(false)}
+              >
+                {/* Slides with Cross-Fade Transition */}
+                {heroSlides.map((slide, index) => {
+                  const isActive = heroSlide === index;
+                  return (
+                    <div
+                      key={slide.title}
+                      className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
+                        isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
+                      }`}
+                    >
+                      <img
+                        src={slide.image}
+                        alt={slide.alt}
+                        referrerPolicy="no-referrer"
+                        className={`w-full h-full object-cover object-center transition-transform duration-1000 ease-out ${
+                          isActive ? 'scale-100' : 'scale-105'
+                        }`}
+                      />
+
+                      {/* Subtle Gradient for Depth & Text Readability */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent pointer-events-none" />
+
+                      {/* Top Right Tag Badge */}
+                      <div className="absolute top-3.5 right-3.5 pointer-events-none">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold tracking-wide uppercase bg-black/60 backdrop-blur-md text-emerald-400 border border-white/15 shadow-sm">
+                          <Sparkles className="w-3 h-3 text-emerald-400" />
+                          {slide.tag}
+                        </span>
+                      </div>
+
+                      {/* Bottom Caption Overlay */}
+                      <div className="absolute bottom-3 left-4 right-16 pointer-events-none">
+                        <h3 className="text-white text-sm sm:text-base font-black tracking-tight drop-shadow-sm leading-snug">
+                          {slide.title}
+                        </h3>
+                        <p className="text-white/80 text-[11px] sm:text-xs font-medium drop-shadow-xs truncate mt-0.5">
+                          {slide.subtitle}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Navigation Arrows */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHeroSlide((curr) => (curr === 0 ? heroSlides.length - 1 : curr - 1))
+                  }
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-xs text-white border border-white/20 flex items-center justify-center transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-md"
+                  aria-label="Previous car image"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHeroSlide((curr) => (curr + 1) % heroSlides.length)
+                  }
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-xs text-white border border-white/20 flex items-center justify-center transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-md"
+                  aria-label="Next car image"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                {/* Bottom Pagination Dots */}
+                <div className="absolute bottom-3 right-4 z-20 flex items-center gap-1.5">
+                  {heroSlides.map((slide, idx) => (
+                    <button
+                      key={slide.title}
+                      type="button"
+                      onClick={() => setHeroSlide(idx)}
+                      className={`transition-all duration-300 rounded-full cursor-pointer ${
+                        heroSlide === idx
+                          ? 'w-5 h-2 bg-emerald-400 shadow-sm'
+                          : 'w-2 h-2 bg-white/50 hover:bg-white/80'
+                      }`}
+                      aria-label={`Go to slide ${idx + 1}`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -261,7 +414,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
 
           {/* Interactive Search Box matching web11.png */}
-          <div className="mt-8 sm:mt-10 bg-white rounded-2xl shadow-lg border border-slate-200/80 p-5 sm:p-6 shaba-premium-card">
+          <div className="mt-8 sm:mt-10 bg-white rounded-2xl shadow-lg border border-slate-200/80 p-5 sm:p-6 shaba-premium-card relative z-30">
             {/* Top Tabs: Buy Cars, Rent a Car, Import from US */}
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-5">
               <button
@@ -313,7 +466,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             {/* Inputs Row */}
             <form
               onSubmit={handleHeroSearch}
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 items-end"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 items-end relative z-20"
             >
               <div>
                 <CustomSelect
@@ -405,7 +558,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </section>
 
       {/* 4 Value Pillars Bar matching web11.png */}
-      <section className="home-value-section max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 sm:-mt-8 relative z-20">
+      <section className="home-value-section max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 sm:mt-8 lg:mt-10 relative z-10">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-center">
           <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 text-[#0e7c3a] flex items-center justify-center flex-shrink-0">

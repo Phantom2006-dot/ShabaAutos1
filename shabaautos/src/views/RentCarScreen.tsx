@@ -23,9 +23,13 @@ import {
   Loader2,
   Copy,
   ArrowLeft,
+  ChevronLeft,
+  Sparkles,
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { bookVehicleRental, RentalVehicleApiRecord } from '../services/api';
+import bmwHeroBlack from '../assets/images/bmw_hero_coupe_1789257165323.jpg';
+import bmwHeroSilver from '../assets/images/bmw_silver_coupe_1789257180258.jpg';
 
 interface RentCarScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -57,6 +61,35 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [bookingResult, setBookingResult] = useState<any | null>(null);
   const [copiedBookingId, setCopiedBookingId] = useState(false);
+
+  // Hero Carousel State
+  const [heroSlide, setHeroSlide] = useState(0);
+  const [isHeroCarouselHovered, setIsHeroCarouselHovered] = useState(false);
+
+  const heroSlides = [
+    {
+      image: bmwHeroBlack,
+      alt: 'Black Futuristic BMW Concept Coupe for Rent',
+      title: 'BMW Vision Concept Coupe',
+      subtitle: 'VIP Chauffeur & Daily Executive Rental',
+      tag: 'Executive Fleet',
+    },
+    {
+      image: bmwHeroSilver,
+      alt: 'Silver BMW M-Series Sports Coupe for Rent',
+      title: 'BMW M-Series Coupe',
+      subtitle: 'Precision Performance for Special Events',
+      tag: 'Premium Rental',
+    },
+  ];
+
+  useEffect(() => {
+    if (isHeroCarouselHovered) return;
+    const timer = window.setInterval(() => {
+      setHeroSlide((current) => (current + 1) % heroSlides.length);
+    }, 5500);
+    return () => window.clearInterval(timer);
+  }, [isHeroCarouselHovered, heroSlides.length]);
 
   useEffect(() => {
     let active = true;
@@ -226,14 +259,94 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Right Photo: Black RAV4 SUV matching Web8.png */}
+            {/* Right Column: Hero Car Carousel (BMW Coupe Edition) - Compact & Proportional */}
             <div className="lg:col-span-6 flex justify-center relative">
-              <div className="relative w-full max-w-[540px]">
-                <img
-                  src="https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=1200&q=85"
-                  alt="Black Luxury SUV for Rent"
-                  className="w-full h-auto object-contain drop-shadow-2xl rounded-2xl"
-                />
+              <div
+                className="relative w-full max-w-[540px] aspect-[16/10] sm:aspect-[16/9] rounded-2xl overflow-hidden shadow-2xl border border-slate-200/80 bg-slate-900 group"
+                onMouseEnter={() => setIsHeroCarouselHovered(true)}
+                onMouseLeave={() => setIsHeroCarouselHovered(false)}
+              >
+                {/* Slides with Cross-Fade Transition */}
+                {heroSlides.map((slide, index) => {
+                  const isActive = heroSlide === index;
+                  return (
+                    <div
+                      key={slide.title}
+                      className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
+                        isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
+                      }`}
+                    >
+                      <img
+                        src={slide.image}
+                        alt={slide.alt}
+                        referrerPolicy="no-referrer"
+                        className={`w-full h-full object-cover object-center transition-transform duration-1000 ease-out ${
+                          isActive ? 'scale-100' : 'scale-105'
+                        }`}
+                      />
+
+                      {/* Subtle Gradient for Depth & Text Readability */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent pointer-events-none" />
+
+                      {/* Top Right Tag Badge */}
+                      <div className="absolute top-3.5 right-3.5 pointer-events-none">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold tracking-wide uppercase bg-black/60 backdrop-blur-md text-emerald-400 border border-white/15 shadow-sm">
+                          <Sparkles className="w-3 h-3 text-emerald-400" />
+                          {slide.tag}
+                        </span>
+                      </div>
+
+                      {/* Bottom Caption Overlay */}
+                      <div className="absolute bottom-3 left-4 right-16 pointer-events-none">
+                        <h3 className="text-white text-sm sm:text-base font-black tracking-tight drop-shadow-sm leading-snug">
+                          {slide.title}
+                        </h3>
+                        <p className="text-white/80 text-[11px] sm:text-xs font-medium drop-shadow-xs truncate mt-0.5">
+                          {slide.subtitle}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Navigation Arrows */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHeroSlide((curr) => (curr === 0 ? heroSlides.length - 1 : curr - 1))
+                  }
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-xs text-white border border-white/20 flex items-center justify-center transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-md"
+                  aria-label="Previous rental car image"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setHeroSlide((curr) => (curr + 1) % heroSlides.length)
+                  }
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 backdrop-blur-xs text-white border border-white/20 flex items-center justify-center transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-md"
+                  aria-label="Next rental car image"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                {/* Bottom Pagination Dots */}
+                <div className="absolute bottom-3 right-4 z-20 flex items-center gap-1.5">
+                  {heroSlides.map((slide, idx) => (
+                    <button
+                      key={slide.title}
+                      type="button"
+                      onClick={() => setHeroSlide(idx)}
+                      className={`transition-all duration-300 rounded-full cursor-pointer ${
+                        heroSlide === idx
+                          ? 'w-5 h-2 bg-emerald-400 shadow-sm'
+                          : 'w-2 h-2 bg-white/50 hover:bg-white/80'
+                      }`}
+                      aria-label={`Go to slide ${idx + 1}`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </div>
