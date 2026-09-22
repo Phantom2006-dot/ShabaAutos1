@@ -34,11 +34,13 @@ export async function handleClerkWebhook(req: Request, res: Response) {
   let event: any;
   try {
     const wh = new Webhook(signingSecret);
-    event = wh.verify(rawBody, {
+    // svix's verify() returns undefined on success (throws on failure), so parse the raw payload ourselves.
+    wh.verify(rawBody, {
       'svix-id': svixId,
       'svix-timestamp': svixTimestamp,
       'svix-signature': svixSignature,
     });
+    event = JSON.parse(rawBody);
   } catch (err: any) {
     console.error('[Clerk Webhook Verification Error]:', err.message);
     return res.status(400).json({
@@ -50,7 +52,7 @@ export async function handleClerkWebhook(req: Request, res: Response) {
 
   const dbService = getDatabaseService();
   const eventType = event.type;
-  const data = event.data;
+  const data = event.data || {};
 
   try {
     switch (eventType) {
