@@ -255,7 +255,7 @@ function ClerkAuthInner({ children }: { children: ReactNode }) {
         clerkId: clerkUser.id,
         email: clerkUser.primaryEmailAddress?.emailAddress || '',
         fullName: clerkUser.fullName || `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'ShabaAutos User',
-        phone: clerkUser.primaryPhoneNumber?.phoneNumber,
+        phone: (clerkUser.unsafeMetadata?.phone as string | undefined) || clerkUser.primaryPhoneNumber?.phoneNumber || '',
         role: userRole,
         avatarUrl: clerkUser.imageUrl,
       }
@@ -313,7 +313,11 @@ function ClerkAuthInner({ children }: { children: ReactNode }) {
         password: data.pass,
         firstName,
         lastName,
-        phoneNumber: data.phone || undefined,
+        // Store phone as metadata only (not an auth identifier) so phone-number
+        // authentication doesn't need to be enabled in the Clerk Dashboard.
+        unsafeMetadata: {
+          phone: data.phone?.trim() || '',
+        },
       });
 
       // Prepare email verification code

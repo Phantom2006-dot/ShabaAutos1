@@ -63,7 +63,10 @@ export async function handleClerkWebhook(req: Request, res: Response) {
           || data.email_addresses?.[0]?.email_address
           || '';
 
-        const primaryPhone = data.phone_numbers?.find((p: any) => p.id === data.primary_phone_number_id)?.phone_number
+        // Phone is stored as unsafeMetadata (storage-only, non-auth) so it isn't
+        // required to be enabled as an auth identifier in the Clerk Dashboard.
+        const primaryPhone = data.unsafe_metadata?.phone
+          || data.phone_numbers?.find((p: any) => p.id === data.primary_phone_number_id)?.phone_number
           || data.phone_numbers?.[0]?.phone_number
           || '';
 
