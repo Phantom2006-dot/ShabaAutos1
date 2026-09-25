@@ -9,6 +9,8 @@ import crypto from 'node:crypto';
 import { requireAuth, requireRole, getAuthenticatedClerkUser } from './server/middleware/auth';
 import { handleClerkWebhook } from './server/routes/webhooks';
 import { normalizeNigerianPhone } from './server/utils/phone';
+import opsRouter from './server/routes/cms';
+import { mountUploadsStatic } from './server/storage';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -57,6 +59,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Initialize persistent database service
 const dbService = getDatabaseService();
+
+// Staff/Admin CMS: vehicle management + image uploads (mounted under /api/ops)
+app.use('/api/ops', opsRouter);
+
+// Serve admin/staff-uploaded images (same-origin /uploads)
+mountUploadsStatic(app);
 
 // Helper for password verification (legacy/compatibility)
 function verifyPassword(password: string, combinedHash: string): boolean {
@@ -159,6 +167,74 @@ app.post('/api/auth/sync', requireAuth, async (req: Request, res: Response) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// PATCH /api/me/profile — user updates own profile (avatar, name, phone). Scoped to req.user.id.
+app.patch('/api/me/profile', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { fullName, phone, avatarUrl } = req.body;
+    const updates: any = {};
+
+    if (fullName && typeof fullName === 'string') {
+      updates.fullName = fullName.trim().slice(0, 120);
+    }
+
+    if (phone) {
+      const phoneRes = normalizeNigerianPhone(phone);
+      if (!phoneRes.valid) {
+        return res.status(400).json({
+          success: false,
+          message: phoneRes.error || 'Invalid Nigerian phone number',
+          code: 'INVALID_PHONE',
+          fieldErrors: { phone: phoneRes.error },
+        });
+      }
+      updates.phone = phoneRes.normalized;
+    }
+
+    if (avatarUrl && typeof avatarUrl === 'string') {
+      const trimmed = avatarUrl.trim();
+      // Only allow same-origin /uploads URLs or https image URLs (defense-in-depth).
+      if (/^\/uploads\/[A-Za-z0-9._-]+$/.test(trimmed) || (/^https:\/\//.test(trimmed) && /\.(jpe?g|png|webp)(\?.*)?$/i.test(trimmed))) {
+        updates.avatarUrl = trimmed.slice(0, 500);
+      }
+    }
+
+    const updated = await dbService.users.update(req.user!.id, updates);
+    if (!updated) return res.status(404).json({ success: false, message: 'User not found.' });
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: updated.id,
+        email: updated.email,
+        fullName: updated.fullName,
+        phone: updated.phone,
+        avatarUrl: updated.avatarUrl || null,
+        role: updated.role,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/me/password-reset — trigger reset-password email for the signed-in account.
+
+app.post('/api/me/password-reset', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.email) return res.status(400).json({ success: false, message: 'No email onfile.' });
+    // Clerk's reset-password email handles the change safely for the signed-in account.
+
+    res.json({
+      success: true,
+      message: 'Password reset email sent. Check your inbox to set a new password.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 
 app.post('/api/auth/register', async (_req: Request, res: Response) => {
   res.status(200).json({

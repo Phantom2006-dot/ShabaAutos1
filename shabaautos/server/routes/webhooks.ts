@@ -34,11 +34,13 @@ export async function handleClerkWebhook(req: Request, res: Response) {
   let event: any;
   try {
     const wh = new Webhook(signingSecret);
-    event = wh.verify(rawBody, {
+    // svix's verify() returns undefined on success (throws on failure), so parse the raw payload ourselves.
+    wh.verify(rawBody, {
       'svix-id': svixId,
       'svix-timestamp': svixTimestamp,
       'svix-signature': svixSignature,
     });
+    event = JSON.parse(rawBody);
   } catch (err: any) {
     console.error('[Clerk Webhook Verification Error]:', err.message);
     return res.status(400).json({
@@ -50,7 +52,7 @@ export async function handleClerkWebhook(req: Request, res: Response) {
 
   const dbService = getDatabaseService();
   const eventType = event.type;
-  const data = event.data;
+  const data = event.data || {};
 
   try {
     switch (eventType) {
@@ -61,7 +63,10 @@ export async function handleClerkWebhook(req: Request, res: Response) {
           || data.email_addresses?.[0]?.email_address
           || '';
 
-        const primaryPhone = data.phone_numbers?.find((p: any) => p.id === data.primary_phone_number_id)?.phone_number
+        // Phone is stored as unsafeMetadata (storage-only, non-auth) so it isn't
+        // required to be enabled as an auth identifier in the Clerk Dashboard.
+        const primaryPhone = data.unsafe_metadata?.phone
+          || data.phone_numbers?.find((p: any) => p.id === data.primary_phone_number_id)?.phone_number
           || data.phone_numbers?.[0]?.phone_number
           || '';
 
