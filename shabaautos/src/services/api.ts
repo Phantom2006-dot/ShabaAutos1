@@ -758,6 +758,21 @@ export async function fetchVehicleById(id: string): Promise<Car | null> {
 }
 
 // 14. Fetch dynamic inventory facets (makes, models, conditions, price bounds, years)
+export interface PublicSiteSettings {
+  [key: string]: { value: string | number | boolean; valueType: string } | undefined;
+}
+
+export async function fetchPublicSettings(): Promise<PublicSiteSettings> {
+  try {
+    const res = await apiFetch('/api/settings/public');
+    if (!res.ok) return {};
+    const json = await res.json();
+    return (json?.data || {}) as PublicSiteSettings;
+  } catch {
+    return {};
+  }
+}
+
 export async function fetchVehicleFacets(): Promise<VehicleFacets | null> {
   try {
     const res = await apiFetch('/api/vehicles/facets');

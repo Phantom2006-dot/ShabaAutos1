@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { fetchMySavedVehicles } from './services/api';
 import { Car, ScreenId } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -25,12 +26,16 @@ export default function App() {
   const [previousScreen, setPreviousScreen] = useState<ScreenId>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const [savedCarIds, setSavedCarIds] = useState<string[]>([
-    'rav4-2022',
-    'camry-2022',
-    'comp-1',
-    'comp-2',
-  ]);
+  const [savedCarIds, setSavedCarIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetchMySavedVehicles().then((res) => {
+      if (!active || !res.success) return;
+      setSavedCarIds(Array.isArray(res.savedCarIds) ? res.savedCarIds : []);
+    });
+    return () => { active = false; };
+  }, []);
 
   const handleToggleSaveCar = (carId: string) => {
     setSavedCarIds((prev) =>

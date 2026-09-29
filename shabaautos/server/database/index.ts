@@ -30,6 +30,9 @@ const DEFAULT_SITE_SETTINGS: Array<{
   // Rental add-on fees
   { settingKey: 'rental.chauffeur_fee_day', settingValue: '25000', valueType: 'number', label: 'Chauffeur fee / day (NGN)', description: 'Daily chauffeur add-on.' },
   { settingKey: 'rental.insurance_fee_day', settingValue: '10000', valueType: 'number', label: 'Rental insurance / day (NGN)', description: 'Daily insurance add-on.' },
+  // Sell-side fees
+  { settingKey: 'sell.doc_fee_ngn', settingValue: '150000', valueType: 'number', label: 'Documentation fee (NGN)', description: 'Doc processing fee shown in buy flow.' },
+  { settingKey: 'sell.delivery_fee_ngn', settingValue: '300000', valueType: 'number', label: 'Delivery fee (NGN)', description: 'Delivery/logistics fee shown in buy flow.' },
   // Sell valuation base prices
   { settingKey: 'valuation.base_prices', settingValue: JSON.stringify({ Toyota: 28000000, Lexus: 38000000, Mercedes: 45000000, Honda: 22000000, Hyundai: 18000000, Ford: 24000000 }), valueType: 'json', label: 'Valuation base prices (NGN)', description: 'Base market values per make.' },
 ];

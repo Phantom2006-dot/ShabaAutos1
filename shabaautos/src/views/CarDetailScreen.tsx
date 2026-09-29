@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Heart,
   Share2,
@@ -27,7 +27,7 @@ import {
 import { Car, ScreenId } from '../types';
 import { TrustBadges } from '../components/TrustBadges';
 import { POPULAR_CARS, BUY_CARS_INVENTORY } from '../data/cars';
-import { submitPriceOffer, bookVehicleInspection } from '../services/api';
+import { submitPriceOffer, bookVehicleInspection, fetchPublicSettings } from '../services/api';
 
 interface CarDetailScreenProps {
   car?: Car;
@@ -56,6 +56,19 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [financeModalOpen, setFinanceModalOpen] = useState(false);
   const [copiedNotification, setCopiedNotification] = useState(false);
+  const [sellFees, setSellFees] = useState<{ docFee: number; deliveryFee: number }>({ docFee: 150000, deliveryFee: 300000 });
+
+  useEffect(() => {
+    let active = true;
+    fetchPublicSettings().then((settings) => {
+      if (!active) return;
+      const docRaw = settings['sell.doc_fee_ngn']?.value;
+      const delRaw = settings['sell.delivery_fee_ngn']?.value;
+      const toNum = (v: unknown, fallback: number): number => typeof v === 'number' ? v : typeof v === 'string' && !Number.isNaN(Number(v)) ? Number(v) : fallback;
+      setSellFees({ docFee: toNum(docRaw, 150000), deliveryFee: toNum(delRaw, 300000) });
+    });
+    return () => { active = false; };
+  }, []);
 
   // Purchase/Offer Form State
   const [buyerName, setBuyerName] = useState('Oluwasegun Adebayo');
@@ -94,8 +107,8 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
 
   // Cost Breakdown calculation
   const serviceFee = Math.round(car.priceNgn * 0.02);
-  const docFee = 150000;
-  const deliveryFee = 300000;
+  const docFee = sellFees.docFee;
+  const deliveryFee = sellFees.deliveryFee;
   const totalCost = car.priceNgn + serviceFee + docFee + deliveryFee;
 
   // Loan calculation

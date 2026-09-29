@@ -1921,6 +1921,54 @@ app.patch('/api/ops/rentals/:bookingId', requireAuth, requireRole(['staff', 'adm
 });
 
 // Site Settings + rates management
+app.get('/api/settings/public', async (_req: Request, res: Response) => {
+  try {
+    const keys = [
+      'rental.chauffeur_fee_day',
+      'rental.insurance_fee_day',
+      'import.usd_to_ngn',
+      'import.freight_default_usd',
+      'import.freight_houston_usd',
+      'import.inland_towing_usd',
+      'import.duty_rate',
+      'import.duty_rate_ev',
+      'import.levy_rate',
+      'import.levy_rate_ev',
+      'import.vat_rate',
+      'import.terminal_charges_ngn',
+      'import.clearing_fee_ngn',
+      'sell.doc_fee_ngn',
+      'sell.delivery_fee_ngn',
+      'valuation.base_prices',
+    ];
+    const envFallbacks: Record<string, { value: string; valueType: 'string'|'number' }> = {
+      'rental.chauffeur_fee_day': { value: process.env.RENTAL_CHAUFFEUR_FEE_DAY_NGN || '25000', valueType: 'number' },
+      'rental.insurance_fee_day': { value: process.env.RENTAL_INSURANCE_FEE_DAY_NGN || '10000', valueType: 'number' },
+      'import.usd_to_ngn': { value: process.env.IMPORT_USD_TO_NGN_RATE || '1500', valueType: 'number' },
+      'import.freight_default_usd': { value: process.env.IMPORT_FREIGHT_DEFAULT_USD || '1800', valueType: 'number' },
+      'import.freight_houston_usd': { value: process.env.IMPORT_FREIGHT_HOUSTON_USD || '1950', valueType: 'number' },
+      'import.inland_towing_usd': { value: process.env.IMPORT_INLAND_TOWING_USD || '450', valueType: 'number' },
+      'import.duty_rate': { value: process.env.IMPORT_DUTY_RATE || '0.35', valueType: 'number' },
+      'import.duty_rate_ev': { value: process.env.IMPORT_DUTY_RATE_EV || '0.10', valueType: 'number' },
+      'import.levy_rate': { value: process.env.IMPORT_LEVY_RATE || '0.15', valueType: 'number' },
+      'import.levy_rate_ev': { value: process.env.IMPORT_LEVY_RATE_EV || '0.05', valueType: 'number' },
+      'import.vat_rate': { value: process.env.IMPORT_VAT_RATE || '0.075', valueType: 'number' },
+      'import.terminal_charges_ngn': { value: process.env.IMPORT_TERMINAL_CHARGES_NGN || '380000', valueType: 'number' },
+      'import.clearing_fee_ngn': { value: process.env.IMPORT_CLEARING_FEE_NGN || '450000', valueType: 'number' },
+      'sell.doc_fee_ngn': { value: '150000', valueType: 'number' },
+      'sell.delivery_fee_ngn': { value: '300000', valueType: 'number' },
+    };
+    const out: Record<string, { value: string|number|boolean; valueType: string }> = {};
+    for (const k of keys) {
+      const row = await dbService.settings.getKey(k).catch(() => null);
+      out[k] = row ? { value: row.settingValue, valueType: row.valueType } : envFallbacks[k];
+    }
+    res.json({ success: true, data: out });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
 app.get('/api/ops/settings', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
   try {
     const all = await dbService.settings.getAll(true);

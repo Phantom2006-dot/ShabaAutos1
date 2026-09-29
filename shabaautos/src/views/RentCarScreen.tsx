@@ -27,7 +27,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ScreenId } from '../types';
-import { bookVehicleRental, RentalVehicleApiRecord } from '../services/api';
+import { bookVehicleRental, RentalVehicleApiRecord, fetchPublicSettings } from '../services/api';
 import bmwHeroBlack from '../assets/images/bmw_hero_coupe_1789257165323.jpg';
 import bmwHeroSilver from '../assets/images/bmw_silver_coupe_1789257180258.jpg';
 
@@ -65,6 +65,18 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   // Hero Carousel State
   const [heroSlide, setHeroSlide] = useState(0);
   const [isHeroCarouselHovered, setIsHeroCarouselHovered] = useState(false);
+  const [chauffeurFeePerDay, setChauffeurFeePerDay] = useState<number>(25000);
+
+  useEffect(() => {
+    let active = true;
+    fetchPublicSettings().then((settings) => {
+      if (!active) return;
+      const raw = settings['rental.chauffeur_fee_day']?.value;
+      if (typeof raw === 'number') setChauffeurFeePerDay(raw);
+      else if (typeof raw === 'string' && !Number.isNaN(Number(raw))) setChauffeurFeePerDay(Number(raw));
+    });
+    return () => { active = false; };
+  }, []);
 
   const heroSlides = [
     {
@@ -699,7 +711,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   </div>
                   <div className="flex justify-between font-medium border-t border-gray-200 pt-2 text-sm font-black text-[#0e7c3a]">
                     <span>Total Cost ({days} {days === 1 ? 'day' : 'days'}):</span>
-                    <span>₦{(bookingResult.totalNgn || ((activeCarForBooking.pricePerDayNgn + (withChauffeur ? 15000 : 0)) * days)).toLocaleString()}</span>
+                    <span>₦{(bookingResult.totalNgn || ((activeCarForBooking.pricePerDayNgn + (withChauffeur ? chauffeurFeePerDay : 0)) * days)).toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -827,13 +839,13 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   {withChauffeur && (
                     <div className="flex justify-between text-gray-600">
                       <span>Chauffeur fee ({days} days):</span>
-                      <span>₦{(15000 * days).toLocaleString()}</span>
+                      <span>₦{(chauffeurFeePerDay * days).toLocaleString()}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-black text-sm text-gray-900 pt-2 border-t border-gray-200">
                     <span>Total Rental Amount:</span>
                     <span className="text-[#0e7c3a]">
-                      ₦{((activeCarForBooking.pricePerDayNgn + (withChauffeur ? 15000 : 0)) * days).toLocaleString()}
+                      ₦{((activeCarForBooking.pricePerDayNgn + (withChauffeur ? chauffeurFeePerDay : 0)) * days).toLocaleString()}
                     </span>
                   </div>
                 </div>
