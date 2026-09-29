@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import helmet from 'helmet';
@@ -10,7 +11,7 @@ import { requireAuth, requireRole, getAuthenticatedClerkUser } from './server/mi
 import { handleClerkWebhook } from './server/routes/webhooks';
 import { normalizeNigerianPhone } from './server/utils/phone';
 import opsRouter from './server/routes/cms';
-import { mountUploadsStatic } from './server/storage';
+import { mountUploadsStatic, uploadImages, saveUploadedImage, removeStoredImage, validateImageBuffers } from './server/storage';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -20,6 +21,12 @@ app.use((req: Request, res: Response, next) => {
   res.setHeader('x-request-id', requestId);
   next();
 });
+
+// On-demand database service (lazy) helper so analytics events can be recorded
+// without forcing a DB connection for static/marketing-only routes.
+function lazyDb() {
+  return getDatabaseService();
+}
 
 // Security Headers (CSP relaxed for Vite local development and preview iframe)
 app.use(
@@ -65,6 +72,85 @@ app.use('/api/ops', opsRouter);
 
 // Serve admin/staff-uploaded images (same-origin /uploads)
 mountUploadsStatic(app);
+
+// -------------------------------------------------------------
+// First-party analytics event capture (privacy-conscious; no false data).
+// -------------------------------------------------------------
+function hashIpForStorage(ip: string | undefined): string | undefined {
+  if (!ip) return undefined;
+  return crypto.createHash('sha256').update(String(ip)).digest('hex').slice(0, 16);
+}
+
+async function recordActivity(entry: {
+  eventType: string;
+  userId?: string;
+  sessionId?: string;
+  entityType?: string;
+  entityId?: string;
+  path?: string;
+  searchQuery?: string;
+  filtersJson?: string;
+  ip?: string;
+  userAgent?: string;
+}): Promise<void> {
+  try {
+    await lazyDb().activity.record({
+      eventType: entry.eventType,
+      userId: entry.userId || undefined,
+      sessionId: entry.sessionId || undefined,
+      entityType: entry.entityType || undefined,
+      entityId: entry.entityId || undefined,
+      path: entry.path || undefined,
+      searchQuery: entry.searchQuery || undefined,
+      filtersJson: entry.filtersJson || undefined,
+      ipHash: process.env.ANALYTICS_STORE_IP_HASH === 'true' ? hashIpForStorage(entry.ip) : undefined,
+      userAgent: process.env.ANALYTICS_STORE_USER_AGENT === 'true' ? (entry.userAgent || undefined) : undefined,
+    });
+  } catch {
+    // Analytics must never break the main request flow.
+  }
+}
+
+// Capture page views + vehicle detail views for real (measured-data-only) analytics.
+// Only enabled when ACTIVITY_TRACKING=true (default true), skips static asset routes.
+app.use('/api/vehicles', (req: Request, res: Response, next: () => void) => {
+  res.on('finish', () => {
+    if (process.env.ACTIVITY_TRACKING === 'false') return;
+    if ((req.method || 'GET').toUpperCase() !== 'GET') return;
+    const pathSeg = req.path || '';
+    if (pathSeg === '/') {
+      const searchParam = req.query?.search ? String(req.query.search).slice(0, 120) : undefined;
+      const filters: Record<string, string> = {};
+      for (const key of ['make', 'model', 'bodyType', 'transmission', 'fuelType', 'condition', 'city']) {
+        const v = req.query?.[key];
+        if (typeof v === 'string' && v) filters[key] = v;
+      }
+      recordActivity({
+        eventType: searchParam ? 'search' : 'page_view',
+        path: '/api/vehicles',
+        entityType: searchParam ? 'search' : undefined,
+        searchQuery: searchParam,
+        filtersJson: Object.keys(filters).length ? JSON.stringify(filters) : undefined,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      return;
+    }
+    if (pathSeg === '/facets') return;
+    const m = pathSeg.match(/^\/([^/]+)/);
+    if (m) {
+      recordActivity({
+        eventType: 'vehicle_view',
+        entityType: 'vehicle',
+        entityId: m[1],
+        path: `/api/vehicles/${m[1]}`,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+    }
+  });
+  next();
+});
 
 // Helper for password verification (legacy/compatibility)
 function verifyPassword(password: string, combinedHash: string): boolean {
@@ -219,6 +305,39 @@ app.patch('/api/me/profile', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+// POST /api/me/avatar — upload a new profile avatar (multipart image, persisted
+// through the same Cloudinary/local pipeline as vehicle photos).
+app.post(
+  '/me/avatar',
+  requireAuth,
+  uploadImages.single('avatar'),
+  async (req: Request, res: Response) => {
+    try {
+      const file = (req.file || undefined) as Express.Multer.File | undefined;
+      if (!file) return res.status(400).json({ success: false, message: 'No image file provided. Field name: avatar' });
+      try {
+        validateImageBuffers([file]);
+      } catch (vErr: any) {
+        return res.status(400).json({ success: false, message: vErr.message, code: 'VALIDATION_ERROR' });
+      }
+      const saved = await saveUploadedImage(file.buffer, file.mimetype);
+      const prev = await dbService.users.findById(req.user!.id);
+      await dbService.users.update(req.user!.id, { avatarUrl: saved.url });
+      if (prev?.avatarUrl && prev.avatarUrl !== saved.url) {
+        await removeStoredImage(prev.avatarUrl).catch(() => undefined);
+      }
+      res.status(201).json({
+        success: true,
+        message: 'Avatar updated successfully',
+        data: saved,
+        avatarUrl: saved.url,
+      });
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  }
+);
+
 // POST /api/me/password-reset — trigger reset-password email for the signed-in account.
 
 app.post('/api/me/password-reset', requireAuth, async (req: Request, res: Response) => {
@@ -345,19 +464,14 @@ app.post('/api/auth/login', async (_req: Request, res: Response) => {
   });
 });
 
-// Helper: Map database vehicle entity into UI-ready Car model with stable images, explicit licensing & sanitization
+// Helper: Map database vehicle entity into UI-ready Car model.
+// Images come ONLY from the vehicle_images relationship (real DB/Cloudinary data);
+// seller is returned only when a real seller record exists (never fabricated).
 async function formatVehicleToCar(v: any, images?: string[], seller?: any): Promise<any> {
-  const defaultImages = [
-    'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1590362891991-f776e747a588?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=1200&q=80',
-  ];
-
   let resolvedImages = images;
   if (!resolvedImages || resolvedImages.length === 0) {
     const dbImages = await dbService.vehicles.getImages(v.id);
-    resolvedImages = dbImages.length > 0 ? dbImages.map((img) => img.url) : defaultImages;
+    resolvedImages = dbImages.length > 0 ? dbImages.map((img) => img.url) : [];
   }
 
   let resolvedSeller = seller;
@@ -396,29 +510,21 @@ async function formatVehicleToCar(v: any, images?: string[], seller?: any): Prom
     stockId: v.stockId,
     listedTimeAgo,
     images: resolvedImages,
-    imageSource: 'Verified Dealership Catalog & Studio Media',
-    imageLicense: 'Editorial & Commercial Vehicle Marketplace Display Rights Granted',
     description: v.description || '',
     features: Array.isArray(v.features) ? v.features : [],
     inspectionPassed: v.inspectionPassed !== undefined ? Boolean(v.inspectionPassed) : undefined,
-    // Strictly omit internal supplier notes, private seller banking/phone, or admin moderation fields
+    // Strictly omit internal supplier notes, private seller banking/phone, or admin moderation fields.
+    // Null (not fabricated) when no dealer record exists.
     seller: resolvedSeller
       ? {
           name: resolvedSeller.name,
           verified: Boolean(resolvedSeller.verified),
-          rating: Number(resolvedSeller.rating) || 4.9,
-          reviewsCount: Number(resolvedSeller.reviewsCount) || 42,
+          rating: Number(resolvedSeller.rating),
+          reviewsCount: Number(resolvedSeller.reviewsCount),
           location: resolvedSeller.location || 'Lagos, Nigeria',
-          joinedYear: resolvedSeller.joinedYear || '2021',
+          joinedYear: resolvedSeller.joinedYear || '',
         }
-      : {
-          name: 'Prime Motors Ltd',
-          verified: true,
-          rating: 4.9,
-          reviewsCount: 42,
-          location: 'Lekki Phase 1, Lagos',
-          joinedYear: '2021',
-        },
+      : null,
   };
 }
 
@@ -1096,8 +1202,12 @@ app.post('/api/rentals/book', requireAuth, async (req: Request, res: Response) =
     }
 
     const dailyRate = rentalVehicle.pricePerDayNgn;
-    const chauffeurFee = withChauffeur ? 25000 * numDays : 0;
-    const insuranceFee = withInsurance ? 10000 * numDays : 0;
+    // Configurable add-on rates come from site_settings (admin-editable);
+    // env fallbacks are used only before settings are seeded.
+    const chauffeurFeePerDay = await dbService.settings.getNumber('rental.chauffeur_fee_day', Number(process.env.RENTAL_CHAUFFEUR_FEE_DAY_NGN || 25000));
+    const insuranceFeePerDay = await dbService.settings.getNumber('rental.insurance_fee_day', Number(process.env.RENTAL_INSURANCE_FEE_DAY_NGN || 10000));
+    const chauffeurFee = withChauffeur ? chauffeurFeePerDay * numDays : 0;
+    const insuranceFee = withInsurance ? insuranceFeePerDay * numDays : 0;
     const serverComputedTotal = dailyRate * numDays + chauffeurFee + insuranceFee;
 
     const booking = await dbService.rentals.createBookingWithBlock({
@@ -1136,7 +1246,7 @@ app.post('/api/rentals/book', requireAuth, async (req: Request, res: Response) =
 // -------------------------------------------------------------
 // 7. Import Duty & Landed Cost Calculation Engine
 // -------------------------------------------------------------
-app.post('/api/imports/calculate', (req: Request, res: Response) => {
+app.post('/api/imports/calculate', async (req: Request, res: Response) => {
   try {
     const { auctionPriceUsd, year, originPort, isElectric } = req.body;
 
@@ -1147,25 +1257,39 @@ app.post('/api/imports/calculate', (req: Request, res: Response) => {
     const priceUsd = Number(auctionPriceUsd);
     const vehicleYear = parseInt(year as string, 10) || new Date().getFullYear();
 
-    const USD_TO_NGN = Number(process.env.IMPORT_USD_TO_NGN_RATE || 1500);
-    const oceanFreightUsd = originPort === 'Houston'
-      ? Number(process.env.IMPORT_FREIGHT_HOUSTON_USD || 1950)
-      : Number(process.env.IMPORT_FREIGHT_DEFAULT_USD || 1800);
-    const inlandTowingUsd = Number(process.env.IMPORT_INLAND_TOWING_USD || 450);
+    // Rates come from site_settings (admin-configurable). Env values act only as
+    // boot-time fallbacks before settings are seeded. Never fabricated live data.
+    const [usdToNgnRaw, freightDefaultRaw, freightHoustonRaw, towingRaw, dutyRaw, dutyEvRaw, levyRaw, levyEvRaw, vatRaw, terminalRaw, clearingRaw] = await Promise.all([
+      dbService.settings.getNumber('import.usd_to_ngn', Number(process.env.IMPORT_USD_TO_NGN_RATE || 1500)),
+      dbService.settings.getNumber('import.freight_default_usd', Number(process.env.IMPORT_FREIGHT_DEFAULT_USD || 1800)),
+      dbService.settings.getNumber('import.freight_houston_usd', Number(process.env.IMPORT_FREIGHT_HOUSTON_USD || 1950)),
+      dbService.settings.getNumber('import.inland_towing_usd', Number(process.env.IMPORT_INLAND_TOWING_USD || 450)),
+      dbService.settings.getNumber('import.duty_rate', Number(process.env.IMPORT_DUTY_RATE || 0.35)),
+      dbService.settings.getNumber('import.duty_rate_ev', Number(process.env.IMPORT_DUTY_RATE_EV || 0.10)),
+      dbService.settings.getNumber('import.levy_rate', Number(process.env.IMPORT_LEVY_RATE || 0.15)),
+      dbService.settings.getNumber('import.levy_rate_ev', Number(process.env.IMPORT_LEVY_RATE_EV || 0.05)),
+      dbService.settings.getNumber('import.vat_rate', Number(process.env.IMPORT_VAT_RATE || 0.075)),
+      dbService.settings.getNumber('import.terminal_charges_ngn', Number(process.env.IMPORT_TERMINAL_CHARGES_NGN || 380000)),
+      dbService.settings.getNumber('import.clearing_fee_ngn', Number(process.env.IMPORT_CLEARING_FEE_NGN || 450000)),
+    ]);
+
+    const usdToNgn = usdToNgnRaw;
+    const oceanFreightUsd = originPort === 'Houston' ? freightHoustonRaw : freightDefaultRaw;
+    const inlandTowingUsd = towingRaw;
     const totalUsd = priceUsd + oceanFreightUsd + inlandTowingUsd;
 
-    const cifNgn = totalUsd * USD_TO_NGN;
+    const cifNgn = Math.round(totalUsd * usdToNgn);
 
-    const dutyRate = isElectric ? 0.10 : 0.35;
-    const levyRate = isElectric ? 0.05 : 0.15;
-    const vatRate = 0.075;
+    const dutyRate = isElectric ? dutyEvRaw : dutyRaw;
+    const levyRate = isElectric ? levyEvRaw : levyRaw;
+    const vatRate = vatRaw;
 
     const importDutyNgn = Math.round(cifNgn * dutyRate);
     const nacLevyNgn = Math.round(cifNgn * levyRate);
     const vatNgn = Math.round((cifNgn + importDutyNgn + nacLevyNgn) * vatRate);
 
-    const terminalChargesNgn = Number(process.env.IMPORT_TERMINAL_CHARGES_NGN || 380000);
-    const clearingAgencyFeeNgn = Number(process.env.IMPORT_CLEARING_FEE_NGN || 450000);
+    const terminalChargesNgn = terminalRaw;
+    const clearingAgencyFeeNgn = clearingRaw;
     const totalCustomsClearanceNgn = importDutyNgn + nacLevyNgn + vatNgn + terminalChargesNgn + clearingAgencyFeeNgn;
     const vehicleLandedCostNgn = cifNgn + totalCustomsClearanceNgn;
 
@@ -1180,7 +1304,7 @@ app.post('/api/imports/calculate', (req: Request, res: Response) => {
         inlandTowingUsd,
         cifValueUsd: totalUsd,
         cifValueNgn: cifNgn,
-        usdToNgnRate: USD_TO_NGN,
+        usdToNgnRate: usdToNgn,
         dutyRate: dutyRate * 100,
         levyRate: levyRate * 100,
         importDutyNgn,
@@ -1193,7 +1317,8 @@ app.post('/api/imports/calculate', (req: Request, res: Response) => {
         estimatedLocalDealerPriceNgn,
         savingsVsLocalMarketNgn,
         estimatedTransitDays: '21-28 Days',
-        calculationVersion: process.env.IMPORT_CALCULATION_VERSION || 'estimate-v1',
+        calculationVersion: process.env.IMPORT_CALCULATION_VERSION || 'estimate-v2',
+        ratesSource: 'site_settings',
         assumptions: {
           originPort: originPort || 'default origin',
           electricVehicleRatesConfigured: Boolean(isElectric),
@@ -1286,6 +1411,15 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
       status: 'Sourcing Started',
     });
 
+    // Record the origin of the request in status history for immutable audit.
+    await dbService.statusHistory.record({
+      resourceType: 'import',
+      resourceId: order.trackingId,
+      toStatus: 'Sourcing Started',
+      note: 'Import request submitted by customer.',
+      changedBy: req.user!.id,
+    }).catch(() => undefined);
+
     // Add first initial milestone
     await dbService.imports.addMilestone({
       trackingId,
@@ -1299,11 +1433,24 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
       location: 'ShabaAutos Operations Hub, Lagos',
     });
 
+    await recordActivity({
+      eventType: 'submit_request',
+      userId: req.user!.id,
+      entityType: 'import',
+      entityId: order.trackingId,
+      path: '/api/imports/request',
+    });
+
     res.status(201).json({
       success: true,
       message: 'Import order request submitted! Your designated US sourcing specialist will contact you.',
       trackingId,
       data: order,
+      statusHistory: [{
+        toStatus: 'Sourcing Started',
+        note: 'Import request submitted by customer.',
+        createdAt: new Date().toISOString(),
+      }],
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -1333,6 +1480,7 @@ app.get('/api/tracking/:trackingId', async (req: Request, res: Response) => {
 
     const milestones = await dbService.imports.getMilestones(order.trackingId);
     const events = await dbService.imports.getTrackingEvents(order.trackingId);
+    const statusHistory = await dbService.statusHistory.listFor('import', order.trackingId);
 
     const mappedSteps = milestones.map((m) => ({
       step: m.stepOrder,
@@ -1353,17 +1501,20 @@ app.get('/api/tracking/:trackingId', async (req: Request, res: Response) => {
         customerName: order.customerName,
         originPort: order.originPort,
         destinationPort: order.destinationPort,
-        vesselName: events.length > 0 && events[0].vesselName ? events[0].vesselName : 'Vessel Assignment in Progress',
-        containerNo: events.length > 0 && events[0].containerNo ? events[0].containerNo : 'Container Assignment in Progress',
-        currentLocation: events.length > 0 ? events[0].location : 'Origin Terminal',
+        // Honest nulls instead of invented facts: real vessel/container data is
+        // only present when a staff member recorded an actual tracking event.
+        vesselName: events.length > 0 && events[0].vesselName ? events[0].vesselName : null,
+        containerNo: events.length > 0 && events[0].containerNo ? events[0].containerNo : null,
+        currentLocation: events.length > 0 ? events[0].location : null,
         car: {
           make: order.make,
           model: order.model,
-          year: order.year || 2022,
-          vin: order.vin || 'VIN Pending Assignment',
+          year: order.year,
+          vin: order.vin || null,
         },
         steps: mappedSteps,
         events,
+        statusHistory,
       },
     });
   } catch (err: any) {
@@ -1374,9 +1525,33 @@ app.get('/api/tracking/:trackingId', async (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 10. Sell Car Valuation & Consignment Submission
 // -------------------------------------------------------------
+// Valuation engine: configurable base prices via site_settings (admin-editable),
+// with sensible defaults. Clearly labeled as an internal estimate, never a guarantee.
+async function computeValuation(make: string, model: string, year: number, mileage: number, condition: string): Promise<{ base: number; ageFactor: number; mileageFactor: number; conditionFactor: number; estimatedValueNgn: number; algorithmVersion: string }> {
+  const defaults: Record<string, number> = { Toyota: 28000000, Lexus: 38000000, Mercedes: 45000000, Honda: 22000000, Hyundai: 18000000, Ford: 24000000 };
+  const basePricesSetting = await dbService.settings.getKey('valuation.base_prices').catch(() => null);
+  let basePrices = defaults;
+  if (basePricesSetting?.settingValue) {
+    try {
+      const parsed = JSON.parse(basePricesSetting.settingValue);
+      if (parsed && typeof parsed === 'object') basePrices = { ...defaults, ...parsed };
+    } catch {}
+  }
+  const makeKey = Object.keys(basePrices).find((k) => make.toLowerCase().includes(k.toLowerCase())) || 'Toyota';
+  const base = basePrices[makeKey];
+
+  const currentYear = new Date().getFullYear();
+  const age = Math.max(0, currentYear - year);
+  const ageFactor = Math.max(0.4, 1 - age * 0.05);
+  const mileageFactor = Math.max(0.65, 1 - (mileage / 10000) * 0.03);
+  const conditionFactor = condition === 'Foreign Used (Tokunbo)' ? 1.15 : condition === 'Brand New' ? 1.4 : 0.85;
+  const estimatedValueNgn = Math.round(base * ageFactor * mileageFactor * conditionFactor);
+  return { base, ageFactor, mileageFactor, conditionFactor, estimatedValueNgn, algorithmVersion: 'v3-configurable' };
+}
+
 app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { make, model, year, trim, mileage, condition, askingPriceNgn, sellerName, fullName, phone, email, location, issues } = req.body;
+    const { make, model, year, trim, mileage, condition, askingPriceNgn, sellerName, fullName, phone, email, location, issues, photos } = req.body;
     const finalSeller = (sellerName || fullName || req.user?.fullName || '').trim();
     const rawPhone = (phone || req.user?.phone || '').trim();
     const finalMake = (make || '').trim();
@@ -1405,25 +1580,9 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
     const carMileage = Number(mileage) || 50000;
     const carCondition = condition || 'Nigeria Used';
 
-    // Market Valuation Algorithm
-    const basePrices: Record<string, number> = {
-      Toyota: 28000000,
-      Lexus: 38000000,
-      Mercedes: 45000000,
-      Honda: 22000000,
-      Hyundai: 18000000,
-      Ford: 24000000,
-    };
-    const makeKey = Object.keys(basePrices).find((k) => finalMake.toLowerCase().includes(k.toLowerCase())) || 'Toyota';
-    const base = basePrices[makeKey];
+    const valuation = await computeValuation(finalMake, finalModel, carYear, carMileage, carCondition);
 
-    const currentYear = new Date().getFullYear();
-    const age = Math.max(0, currentYear - carYear);
-    const ageFactor = Math.max(0.4, 1 - age * 0.05);
-    const mileageFactor = Math.max(0.65, 1 - (carMileage / 10000) * 0.03);
-    const conditionFactor = carCondition === 'Foreign Used (Tokunbo)' ? 1.15 : carCondition === 'Brand New' ? 1.4 : 0.85;
-
-    const estimatedValueNgn = Math.round(base * ageFactor * mileageFactor * conditionFactor);
+    const photoUrls = Array.isArray(photos) ? photos.map(String).filter((p) => /^https?:\/\//.test(p)).slice(0, 10) : [];
 
     const submission = await dbService.sell.create({
       sellerName: finalSeller,
@@ -1438,8 +1597,9 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
       issues: issues || undefined,
       location: location || 'Lagos',
       askingPriceNgn: asking,
-      estimatedValueNgn,
+      estimatedValueNgn: valuation.estimatedValueNgn,
       status: 'Under Review',
+      photoUrls,
     });
 
     // Record valuation audit history
@@ -1450,19 +1610,42 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
       year: carYear,
       mileage: carMileage,
       condition: carCondition,
-      algorithmVersion: 'v2.2-ngn-market',
-      baseValueNgn: base,
-      mileageFactor,
-      conditionFactor,
-      finalValuationNgn: estimatedValueNgn,
+      algorithmVersion: valuation.algorithmVersion,
+      baseValueNgn: valuation.base,
+      mileageFactor: valuation.mileageFactor,
+      conditionFactor: valuation.conditionFactor,
+      finalValuationNgn: valuation.estimatedValueNgn,
+    });
+
+    // Start the admin-approval workflow: pending by default, NOT published.
+    await dbService.statusHistory.record({
+      resourceType: 'sell',
+      resourceId: submission.id,
+      fromStatus: undefined,
+      toStatus: 'pending',
+      note: 'Sell-your-car submission received — pending admin review.',
+      changedBy: req.user!.id,
+    }).catch(() => undefined);
+
+    await recordActivity({
+      eventType: 'submit_request',
+      userId: req.user!.id,
+      entityType: 'sell',
+      entityId: submission.id,
+      path: '/api/sell',
     });
 
     res.status(201).json({
       success: true,
       message: 'Vehicle evaluation submitted! A ShabaAutos certified pricing specialist will inspect your vehicle details.',
       submissionId: submission.id,
-      estimatedValueNgn,
-      data: submission,
+      estimatedValueNgn: valuation.estimatedValueNgn,
+      reviewStatus: 'pending',
+      data: {
+        ...submission,
+        estimatedValueNgn: valuation.estimatedValueNgn,
+        reviewStatus: 'pending',
+      },
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -1539,6 +1722,14 @@ app.post('/api/concierge', requireAuth, async (req: Request, res: Response) => {
       status: 'Request Received',
     });
 
+    await recordActivity({
+      eventType: 'submit_request',
+      userId: req.user!.id,
+      entityType: 'concierge',
+      entityId: request.id,
+      path: '/api/concierge',
+    });
+
     res.status(201).json({
       success: true,
       ticketId: request.id,
@@ -1548,6 +1739,244 @@ app.post('/api/concierge', requireAuth, async (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// -------------------------------------------------------------
+// 11b. Staff/Admin Operations Management (real data; no placeholders)
+// -------------------------------------------------------------
+
+// Sell-your-car moderation queue
+app.get('/api/ops/sell', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const statusFilter = typeof req.query.status === 'string' ? String(req.query.status) : undefined;
+    const reviewFilter = typeof req.query.review === 'string' ? String(req.query.review) : undefined;
+    let submissions = await dbService.sell.listAll(500, 0);
+    if (statusFilter) submissions = submissions.filter((s) => s.status === statusFilter);
+    if (reviewFilter) submissions = submissions.filter((s) => s.reviewStatus === reviewFilter);
+    res.json({ success: true, data: submissions, total: submissions.length });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Approve / reject / request-more-info on a sell submission
+app.patch('/api/ops/sell/:id', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const reviewStatus = ['approved', 'rejected', 'needs_info', 'pending'].includes(req.body?.reviewStatus) ? req.body.reviewStatus : undefined;
+    if (!reviewStatus) return res.status(400).json({ success: false, message: 'Invalid or missing reviewStatus' });
+    const prev = await dbService.sell.findById(req.params.id);
+    if (!prev) return res.status(404).json({ success: false, message: 'Submission not found.' });
+    const updated = await dbService.sell.updateReview(req.params.id, {
+      reviewStatus,
+      reviewedBy: req.user!.id,
+      adminNotes: req.body?.adminNotes ? String(req.body.adminNotes) : undefined,
+      status: reviewStatus === 'approved' ? undefined : prev.status,
+    });
+    await dbService.statusHistory.record({
+      resourceType: 'sell',
+      resourceId: req.params.id,
+      fromStatus: prev.reviewStatus || 'pending',
+      toStatus: reviewStatus,
+      note: req.body?.adminNotes ? String(req.body.adminNotes) : undefined,
+      changedBy: req.user!.id,
+    }).catch(() => undefined);
+    await recordActivity({
+      eventType: 'admin_action',
+      userId: req.user!.id,
+      entityType: 'sell',
+      entityId: req.params.id,
+      path: `/api/ops/sell/${req.params.id}`,
+    });
+    res.json({ success: true, data: updated });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Concierge requests queue
+app.get('/api/ops/concierge', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const list = await dbService.concierge.list();
+    res.json({ success: true, data: list, total: list.length });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Mark concierge request status
+app.patch('/api/ops/concierge/:id', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const allowed = ['Request Received', 'Agent Assigned', 'Options Presented', 'Fulfilled', 'Closed'] as const;
+    const status: typeof allowed[number] | undefined = allowed.includes(req.body?.status) ? req.body.status as typeof allowed[number] : undefined;
+    if (!status) return res.status(400).json({ success: false, message: 'Invalid or missing status' });
+    const existing = await dbService.concierge.findById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: 'Request not found.' });
+    const updated = await dbService.concierge.updateStatus(req.params.id, status);
+    if (!updated) return res.status(404).json({ success: false, message: 'Request not found.' });
+    await dbService.statusHistory.record({
+      resourceType: 'concierge',
+      resourceId: req.params.id,
+      fromStatus: existing.status,
+      toStatus: status,
+      changedBy: req.user!.id,
+    }).catch(() => undefined);
+    res.json({ success: true, data: updated });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Import requests queue
+app.get('/api/ops/imports', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const userId = typeof req.query.userId === 'string' ? String(req.query.userId) : undefined;
+    const list = await dbService.imports.listRequests(userId as string | undefined) ?? [];
+    res.json({ success: true, data: list });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Tracking event recording for an import order
+app.post('/api/ops/imports/:trackingId/events', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const event = await dbService.imports.addTrackingEvent({
+      trackingId: req.params.trackingId,
+      eventTimestamp: new Date().toISOString(),
+      status: String(req.body?.status || 'In Transit').slice(0, 100),
+      location: req.body?.location ? String(req.body.location).slice(0, 100) : undefined,
+      vesselName: req.body?.vesselName ? String(req.body.vesselName).slice(0, 100) : undefined,
+      containerNo: req.body?.containerNo ? String(req.body.containerNo).slice(0, 100) : undefined,
+      details: req.body?.details ? String(req.body.details).slice(0, 500) : undefined,
+      recordedBy: req.user!.id,
+    });
+    await dbService.statusHistory.record({
+      resourceType: 'import',
+      resourceId: req.params.trackingId,
+      toStatus: String(req.body?.status || 'In Transit').slice(0, 100),
+      note: req.body?.details ? String(req.body.details).slice(0, 500) : undefined,
+      changedBy: req.user!.id,
+    }).catch(() => undefined);
+    res.status(201).json({ success: true, data: event });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Update import request status
+app.patch('/api/ops/imports/:trackingId', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const allowed = ['Sourcing Started', 'Inspection Passed', 'Shipped from USA', 'Port Arrival', 'Customs Clearance', 'Delivered', 'Cancelled'] as const;
+    const status: typeof allowed[number] | undefined = allowed.includes(req.body?.status) ? req.body.status as typeof allowed[number] : undefined;
+    if (!status) return res.status(400).json({ success: false, message: 'Invalid or missing status' });
+    const current = await dbService.imports.findByTrackingId(req.params.trackingId);
+    if (!current) return res.status(404).json({ success: false, message: 'Order not found.' });
+    await dbService.imports.updateStatus(req.params.trackingId, status);
+    await dbService.statusHistory.record({
+      resourceType: 'import',
+      resourceId: req.params.trackingId,
+      fromStatus: current.status,
+      toStatus: status,
+      note: req.body?.note ? String(req.body.note) : undefined,
+      changedBy: req.user!.id,
+    }).catch(() => undefined);
+    const afterStatus = await dbService.imports.findByTrackingId(req.params.trackingId);
+    res.json({ success: true, data: afterStatus });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Rentals management queue
+app.get('/api/ops/rentals', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const list = await dbService.rentals.listAllBookings(500, 0);
+    res.json({ success: true, data: list });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Update rental booking status
+app.patch('/api/ops/rentals/:bookingId', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const allowedRental: ReadonlyArray<string> = ['Active Reservation', 'Completed', 'Cancelled'];
+    if (!req.body?.status || !allowedRental.includes(String(req.body.status))) return res.status(400).json({ success: false, message: 'Invalid or missing status' });
+    const status = String(req.body.status) as 'Active Reservation' | 'Completed' | 'Cancelled';
+    const prev = await dbService.rentals.findBookingById(req.params.bookingId);
+    const updated = await dbService.rentals.updateBookingStatus(req.params.bookingId, status);
+    const after = updated;
+    if (!after) return res.status(404).json({ success: false, message: 'Booking not found.' });
+    await dbService.statusHistory.record({
+      resourceType: 'rental',
+      resourceId: req.params.bookingId,
+      fromStatus: prev?.status,
+      toStatus: status,
+      changedBy: req.user!.id,
+    }).catch(() => undefined);
+    res.json({ success: true, data: after });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Site Settings + rates management
+app.get('/api/ops/settings', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const all = await dbService.settings.getAll(true);
+    res.json({ success: true, data: all });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+app.put('/api/ops/settings', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const entries = Array.isArray(req.body?.settings) ? req.body.settings : [];
+    const saved = [];
+    for (const entry of entries) {
+      if (!entry?.settingKey || entry.settingValue === undefined) continue;
+      saved.push(await dbService.settings.set({
+        settingKey: String(entry.settingKey),
+        settingValue: String(entry.settingValue),
+        valueType: ['string', 'number', 'boolean', 'json'].includes(entry.valueType) ? entry.valueType : 'string',
+        label: entry.label ? String(entry.label) : undefined,
+        description: entry.description ? String(entry.description) : undefined,
+        jurisdiction: entry.jurisdiction ? String(entry.jurisdiction) : undefined,
+        updatedBy: req.user!.id,
+      }));
+    }
+    await recordActivity({
+      eventType: 'admin_action',
+      userId: req.user!.id,
+      entityType: 'settings',
+      path: '/api/ops/settings',
+    });
+    res.json({ success: true, data: saved, count: saved.length });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Analytics dashboard (real captured events)
+app.get('/api/ops/analytics', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const days = Number(req.query.days) || 30;
+    const summary = await dbService.activity.summarize(days);
+    res.json({ success: true, data: summary });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+// Recent status history (all resources)
+app.get('/api/ops/status-history', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const recent = await dbService.statusHistory.listRecent(Number(req.query.limit) || 100);
+    res.json({ success: true, data: recent });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
 });
 
 // -------------------------------------------------------------

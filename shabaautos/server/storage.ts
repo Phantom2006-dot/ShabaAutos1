@@ -98,7 +98,16 @@ export function validateImageBuffers(files: Express.Multer.File[]): void {
   }
 }
 
-export async function saveUploadedImage(buffer: Buffer, mime: string): Promise<string> {
+export interface UploadedImageResult {
+  url: string;
+  publicId?: string;
+  assetId?: string;
+  width?: number;
+  height?: number;
+  format?: string;
+}
+
+export async function saveUploadedImage(buffer: Buffer, mime: string): Promise<UploadedImageResult> {
   if (CLOUDINARY_ENABLED) {
     const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`;
     const result = await cloudinary.uploader.upload(dataUrl, {
@@ -107,30 +116,49 @@ export async function saveUploadedImage(buffer: Buffer, mime: string): Promise<s
       unique_filename: true,
       overwrite: false,
     });
-    return result.secure_url;
+    return {
+      url: result.secure_url,
+      publicId: result.public_id,
+      assetId: result.asset_id,
+      width: result.width,
+      height: result.height,
+      format: result.format,
+    };
   }
 
   ensureUploadsDir();
   const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
   const name = `${crypto.randomUUID()}.${ext}`;
   await fs.promises.writeFile(path.join(UPLOADS_DIR, name), buffer);
- return `/uploads/${name}`;
+  return { url: `/uploads/${name}`, format: ext };
 }
 
-export async function removeStoredImage(urlOrPath: string): Promise<void> {
-  if (!urlOrPath) return;
-  if (urlOrPath.includes('res.cloudinary.com')) {
-    const publicId = urlOrPath.split('/').pop()?.split('.')[0];
-    if (publicId) await cloudinary.uploader.destroy('shabaautos/' + publicId).catch(() => undefined);
+export async function removeStoredImage(urlOrPath: string, publicId?: string): Promise<void> {
+  if (!urlOrPath && !publicId) return;
+  if (CLOUDINARY_ENABLED || urlOrPath?.includes('res.cloudinary.com') || publicId?.includes('shabaautos')) {
+    let pid = publicId;
+    if (!pid && urlOrPath?.includes('res.cloudinary.com')) {
+      // Derive fallback public_id from the CDN URL (only used when legacy rows
+      // predate Cloudinary metadata columns).
+      const segments = urlOrPath.split('/');
+      const withExt = segments[segments.length - 1]?.split('?')[0];
+      const base = withExt?.split('.')[0];
+      if (base && segments.includes('image') && segments.includes('upload')) {
+        const uploadIndex = segments.indexOf('upload');
+        pid = `${segments[uploadIndex + 1] || 'shabaautos'}/${base}`;
+      } else if (base) {
+        pid = `shabaautos/${base}`;
+      }
+    }
+    if (pid) await cloudinary.uploader.destroy(pid).catch(() => undefined);
     return;
   }
 
-  const filename = path.basename(urlOrPath.split('?')[0]);
-  if (filename === '.' || filename === '..') return;
+  const filename = path.basename((urlOrPath || '').split('?')[0]);
+  if (filename === '.' || filename === '..' || !filename) return;
   const filePath = path.join(UPLOADS_DIR, filename);
   // Only remove files that live under our uploads dir (defense-in-depth against path traversal).
   if (STORAGE_DRIVER === 'local' && filePath.startsWith(UPLOADS_DIR)) {
-
     await fs.promises.unlink(filePath).catch(() => undefined);
   }
 }

@@ -451,3 +451,54 @@ CREATE TABLE IF NOT EXISTS ai_usage_records (
   metadata_json JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 24. Order Status History
+CREATE TABLE IF NOT EXISTS order_status_history (
+  id VARCHAR(64) PRIMARY KEY,
+  resource_type VARCHAR(32) NOT NULL,
+  resource_id VARCHAR(64) NOT NULL,
+  from_status VARCHAR(64),
+  to_status VARCHAR(64) NOT NULL,
+  note TEXT,
+  changed_by VARCHAR(64),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_status_history_resource ON order_status_history(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_status_history_created ON order_status_history(created_at);
+
+-- 25. Site Settings (admin-editable configuration knobs)
+CREATE TABLE IF NOT EXISTS site_settings (
+  id VARCHAR(64) PRIMARY KEY,
+  setting_key VARCHAR(100) NOT NULL,
+  setting_value TEXT NOT NULL,
+  value_type VARCHAR(16) NOT NULL DEFAULT 'string',
+  label VARCHAR(200),
+  description TEXT,
+  effective_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  jurisdiction VARCHAR(16) DEFAULT 'NG',
+  source_ref VARCHAR(200),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_by VARCHAR(64),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_site_settings_key_active ON site_settings(setting_key) WHERE is_active = true;
+
+-- 26. Analytics / Activity Events (first-party, real data)
+CREATE TABLE IF NOT EXISTS activity_events (
+  id VARCHAR(64) PRIMARY KEY,
+  event_type VARCHAR(32) NOT NULL,
+  user_id VARCHAR(64),
+  session_id VARCHAR(64),
+  entity_type VARCHAR(32),
+  entity_id VARCHAR(64),
+  path VARCHAR(300),
+  referrer VARCHAR(500),
+  search_query TEXT,
+  filters_json JSONB,
+  ip_hash VARCHAR(64),
+  user_agent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_activity_events_created ON activity_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_events_type ON activity_events(event_type);

@@ -73,6 +73,12 @@ export interface VehicleImage {
   url: string;
   displayOrder: number;
   caption?: string;
+  isPrimary?: boolean;
+  publicId?: string;
+  assetId?: string;
+  width?: number;
+  height?: number;
+  format?: string;
   createdAt: string;
 }
 
@@ -292,6 +298,11 @@ export interface SellSubmission {
   estimatedValueNgn: number;
   status: 'Under Review' | 'Inspection Scheduled' | 'Offer Extended' | 'Purchased' | 'Rejected';
   inspectorNotes?: string;
+  photoUrls?: string[];
+  reviewStatus?: 'pending' | 'approved' | 'rejected' | 'needs_info';
+  reviewedBy?: string;
+  reviewedAt?: string;
+  adminNotes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -384,5 +395,50 @@ export interface AiUsageRecord {
   latencyMs?: number;
   status: 'success' | 'failed';
   metadataJson?: string;
+  createdAt: string;
+}
+
+export interface OrderStatusHistory {
+  id: string;
+  resourceType: 'import' | 'offer' | 'rental' | 'sell' | 'concierge' | 'inspection';
+  resourceId: string;
+  fromStatus?: string;
+  toStatus: string;
+  note?: string;
+  changedBy?: string;
+  createdAt: string;
+}
+
+export type SiteSettingValueType = 'string' | 'number' | 'json';
+
+export interface SiteSetting {
+  id: string;
+  settingKey: string;
+  settingValue: string;
+  valueType: SiteSettingValueType;
+  label?: string;
+  description?: string;
+  effectiveDate: string;
+  jurisdiction?: string;
+  sourceRef?: string;
+  isActive: boolean;
+  updatedBy?: string;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface ActivityEvent {
+  id: string;
+  eventType: string;
+  userId?: string;
+  sessionId?: string;
+  entityType?: string;
+  entityId?: string;
+  path?: string;
+  referrer?: string;
+  searchQuery?: string;
+  filtersJson?: string;
+  ipHash?: string;
+  userAgent?: string;
   createdAt: string;
 }
