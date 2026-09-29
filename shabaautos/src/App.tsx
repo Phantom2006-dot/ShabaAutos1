@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { fetchMySavedVehicles } from './services/api';
+import { fetchMySavedVehicles, fetchMyComparison } from './services/api';
 import { Car, ScreenId } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -27,12 +27,17 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [savedCarIds, setSavedCarIds] = useState<string[]>([]);
+  const [compareCount, setCompareCount] = useState(0);
 
   useEffect(() => {
     let active = true;
     fetchMySavedVehicles().then((res) => {
       if (!active || !res.success) return;
       setSavedCarIds(Array.isArray(res.savedCarIds) ? res.savedCarIds : []);
+    });
+    fetchMyComparison().then((res) => {
+      if (!active || !res.success) return;
+      setCompareCount(Array.isArray(res.vehicles) ? res.vehicles.length : 0);
     });
     return () => { active = false; };
   }, []);
@@ -79,7 +84,7 @@ export default function App() {
         currentScreen={currentScreen}
         onNavigate={handleNavigate}
         savedCount={savedCarIds.length}
-        compareCount={3}
+        compareCount={compareCount}
         mobileMenuOpen={mobileMenuOpen}
         onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
         onCloseMobileMenu={() => setMobileMenuOpen(false)}
@@ -102,7 +107,7 @@ export default function App() {
             onSelectCar={handleSelectCar}
             savedCarIds={savedCarIds}
             onToggleSaveCar={handleToggleSaveCar}
-            compareCount={3}
+            compareCount={compareCount}
           />
         )}
 
@@ -172,7 +177,7 @@ export default function App() {
         currentScreen={currentScreen}
         onNavigate={handleNavigate}
         savedCount={savedCarIds.length}
-        compareCount={3}
+        compareCount={compareCount}
         isMenuOpen={mobileMenuOpen}
         onOpenMenu={() => setMobileMenuOpen(true)}
         menuButtonRef={menuButtonRef}
@@ -185,7 +190,7 @@ export default function App() {
         onNavigate={handleNavigate}
         currentScreen={currentScreen}
         savedCount={savedCarIds.length}
-        compareCount={3}
+        compareCount={compareCount}
         triggerRef={menuButtonRef}
       />
     </div>
