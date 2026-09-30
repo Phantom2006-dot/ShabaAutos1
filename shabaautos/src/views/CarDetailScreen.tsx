@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Heart,
+  Search,
   Share2,
   ShieldCheck,
   CheckCircle2,
@@ -26,8 +27,13 @@ import {
 } from 'lucide-react';
 import { Car, ScreenId } from '../types';
 import { TrustBadges } from '../components/TrustBadges';
-import { POPULAR_CARS, BUY_CARS_INVENTORY } from '../data/cars';
-import { submitPriceOffer, bookVehicleInspection, fetchPublicSettings } from '../services/api';
+import {
+  submitPriceOffer,
+  bookVehicleInspection,
+  fetchPublicSettings,
+  fetchVehicleById,
+} from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 
 interface CarDetailScreenProps {
   car?: Car;
@@ -46,12 +52,47 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
   onToggleSave = () => {},
   isImportVariant = false,
 }) => {
-  const car =
-    propCar ||
-    [...BUY_CARS_INVENTORY, ...POPULAR_CARS].find((c) => c.id === carId) ||
-    (isImportVariant || carId === 'rav4-2022' ? BUY_CARS_INVENTORY[0] : POPULAR_CARS[0]);
+  const { user, isSignedIn, isLoaded } = useAuthUser();
+  const [vehicle, setVehicle] = useState<Car | null>(propCar ?? null);
+  const [isLoadingCar, setIsLoadingCar] = useState(false);
+  const [carNotFound, setVehicleNotFound] = useState(false);
 
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  // When no full car object was passed (e.g. direct/deep link by ID), fetch the real record
+  // from the API instead of falling back to fabricated demo inventory. Never mock data.
+
+
+  useEffect(() => {
+    let active = true;
+    if (propCar) {
+      setVehicle(propCar);
+      setVehicleNotFound(false);
+      return;
+    }
+    if (!carId) {
+      setVehicle(null);
+      setVehicleNotFound(true);
+      return;
+    }
+    setIsLoadingCar(true);
+    setVehicleNotFound(false);
+    fetchVehicleById(carId).then((found) => {
+      if (active) {
+        setVehicle(found);
+        setVehicleNotFound(!found);
+        setIsLoadingCar(false);
+      }
+    }).catch(() => {
+      if (active) {
+        setVehicleNotFound(true);
+        setIsLoadingCar(false);
+      }
+    });
+    return () => { active = false; };
+  }, [propCar, carId]);
+
+  const carValue = vehicle ?? null;
+  const carFound = !isLoadingCar && !!carValue && !carNotFound;
+const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
   const [financeModalOpen, setFinanceModalOpen] = useState(false);
@@ -70,19 +111,32 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
     return () => { active = false; };
   }, []);
 
-  // Purchase/Offer Form State
-  const [buyerName, setBuyerName] = useState('Oluwasegun Adebayo');
-  const [buyerPhone, setBuyerPhone] = useState('+234 803 123 9988');
-  const [buyerEmail, setBuyerEmail] = useState('o.adebayo@example.com');
-  const [offerAmount, setOfferAmount] = useState(car.priceNgn);
+  // Prefill offer contact from the real authenticated user — never a fake identity。
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && user) {
+      setBuyerName((prev) => prev || user.fullName || '');
+      setBuyerPhone((prev) => prev || user.phone || '');
+      setBuyerEmail((prev) => prev || user.email || '');
+    }
+  }, [isLoaded, isSignedIn, user]);
+
+  // Purchase/Offer Form State — prefilled from the authenticated Clerk user,
+  // never a fabricated persona. Amount prefills from the real vehicle price.
+
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState('');
+  const [offerAmount, setOfferAmount] = useState(carValue?.priceNgn ?? 0);
   const [paymentMethod, setPaymentMethod] = useState('Direct Bank Transfer');
   const [purchaseNotes, setPurchaseNotes] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [offerResult, setOfferResult] = useState<{ id: string; message: string } | null>(null);
 
   // Inspection Booking State
-  const [inspDate, setInspDate] = useState('2026-09-18');
-  const [inspTime, setInspTime] = useState('10:00 AM - 12:00 PM');
+  const [inspDate, setInspDate] = useState(new Date().toISOString().split('T')[0]);
+  const [inspTime, setInspTime] = useState('09:00 AM - 11:00 AM');
   const [inspHub, setInspHub] = useState('ShabaAutos Flagship Hub, Lekki Phase 1, Lagos');
   const [inspType, setInspType] = useState<'Physical Inspection' | 'Live Video Tour' | 'Mechanic Verification'>('Physical Inspection');
   const [inspSubmitting, setInspSubmitting] = useState(false);
@@ -92,7 +146,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
   const [downPaymentPercent, setDownPaymentPercent] = useState(30);
   const [loanTenureMonths, setLoanTenureMonths] = useState(24);
 
-  const images = car.images && car.images.length > 0 ? car.images : [
+  const images = carValue!.images && carValue!.images.length > 0 ? carValue!.images : [
     'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=1200&q=80',
     'https://images.unsplash.com/photo-1590362891991-f776e747a588?auto=format&fit=crop&w=1200&q=80',
     'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80',
@@ -106,14 +160,14 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
   };
 
   // Cost Breakdown calculation
-  const serviceFee = Math.round(car.priceNgn * 0.02);
+  const serviceFee = Math.round(carValue!.priceNgn * 0.02);
   const docFee = sellFees.docFee;
   const deliveryFee = sellFees.deliveryFee;
-  const totalCost = car.priceNgn + serviceFee + docFee + deliveryFee;
+  const totalCost = carValue!.priceNgn + serviceFee + docFee + deliveryFee;
 
   // Loan calculation
-  const downPaymentAmount = Math.round(car.priceNgn * (downPaymentPercent / 100));
-  const loanPrincipal = car.priceNgn - downPaymentAmount;
+  const downPaymentAmount = Math.round(carValue!.priceNgn * (downPaymentPercent / 100));
+  const loanPrincipal = carValue!.priceNgn - downPaymentAmount;
   const annualInterestRate = 0.18; // 18% annual standard auto loan rate in Nigeria
   const totalInterest = Math.round(loanPrincipal * annualInterestRate * (loanTenureMonths / 12));
   const totalLoanRepayable = loanPrincipal + totalInterest;
@@ -123,8 +177,8 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
     e.preventDefault();
     setOfferSubmitting(true);
     const res = await submitPriceOffer({
-      carId: car.id,
-      carName: `${car.year} ${car.make} ${car.model}`,
+      carId: carValue!.id,
+      carName: `${carValue!.year} ${carValue!.make} ${carValue!.model}`,
       name: buyerName,
       phone: buyerPhone,
       email: buyerEmail,
@@ -145,8 +199,8 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
     e.preventDefault();
     setInspSubmitting(true);
     const res = await bookVehicleInspection({
-      carId: car.id,
-      carName: `${car.year} ${car.make} ${car.model}`,
+      carId: carValue!.id,
+      carName: `${carValue!.year} ${carValue!.make} ${carValue!.model}`,
       name: buyerName,
       phone: buyerPhone,
       email: buyerEmail,
@@ -164,8 +218,39 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
     }
   };
 
+  if (isLoadingCar) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] shaba-screen py-8 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-[#0a502c]" />
+        <p className="text-sm font-semibold text-gray-500 ml-3">Loading vehicle details…</p>
+      </div>
+    );
+  }
+
+  if (!carValue) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] shaba-screen py-8 flex items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-2xl border shaba-surface border-gray-200 p-8 text-center shadow-xs">
+          <div className="mx-auto w-14 h-14 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-4">
+            <Search className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-black text-gray-900 mb-2">Vehicle not found</h2>
+          <p className="text-sm text-gray-500 leading-relaxed mb-6">
+            We couldn't find this vehicle in our inventory. It may have been sold or delisted.
+          </p>
+          <button
+            onClick={() => onNavigate('buy-cars')}
+            className="px-5 py-2.5 rounded-xl bg-[#0a502c] hover:bg-emerald-800 text-white text-sm font-bold transition-colors cursor-pointer"
+          >
+            Browse Available Cars
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const whatsappMessage = encodeURIComponent(
-    `Hello ShabaAutos! I am interested in purchasing the ${car.year} ${car.make} ${car.model} (Stock ID: ${car.stockId}) listed for ₦${car.priceNgn.toLocaleString()}. Please share full inspection details.`
+    `Hello ShabaAutos! I am interested in purchasing the ${carValue!.year} ${carValue!.make} ${carValue!.model} (Stock ID: ${carValue!.stockId}) listed for ₦${carValue!.priceNgn.toLocaleString()}. Please share full inspection details.`
   );
 
   return (
@@ -182,7 +267,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
           </button>
           <span>&gt;</span>
           <span className="font-semibold text-gray-900 truncate">
-            {car.year} {car.make} {car.model}
+            {carValue!.year} {carValue!.make} {carValue!.model}
           </span>
         </nav>
 
@@ -191,15 +276,15 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
-                {car.year} {car.make} {car.model}
+                {carValue!.year} {carValue!.make} {carValue!.model}
               </h1>
-              {car.verified && (
+              {carValue!.verified && (
                 <span className="bg-emerald-100 text-[#0a502c] text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5" />
                   Verified Vehicle
                 </span>
               )}
-              {car.cleanTitle && (
+              {carValue!.cleanTitle && (
                 <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full border border-blue-200">
                   Clean Title
                 </span>
@@ -208,10 +293,10 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
 
             {/* Spec & Meta line */}
             <p className="text-xs text-gray-500 mt-2 font-medium">
-              {car.mileage.toLocaleString()} {car.mileageUnit || 'km'} • {car.transmission} • {car.fuelType} • {car.location}
+              {carValue!.mileage.toLocaleString()} {carValue!.mileageUnit || 'km'} • {carValue!.transmission} • {carValue!.fuelType} • {carValue!.location}
             </p>
             <p className="text-[11px] text-gray-400 mt-0.5">
-              Listed {car.listedTimeAgo} • Stock ID: <span className="font-mono text-gray-600">{car.stockId}</span>
+              Listed {carValue!.listedTimeAgo} • Stock ID: <span className="font-mono text-gray-600">{carValue!.stockId}</span>
             </p>
           </div>
 
@@ -254,7 +339,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
               <div className="relative h-80 sm:h-[420px] rounded-xl overflow-hidden bg-gray-950">
                 <img
                   src={images[selectedImageIndex]}
-                  alt={`${car.make} ${car.model}`}
+                  alt={`${carValue!.make} ${carValue!.model}`}
                   className="w-full h-full object-cover"
                 />
 
@@ -322,42 +407,42 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-center">
                   <span className="block text-[11px] text-gray-500 font-medium">Mileage</span>
                   <span className="block text-xs sm:text-sm font-black text-gray-900 mt-0.5">
-                    {car.mileage.toLocaleString()} {car.mileageUnit || 'km'}
+                    {carValue!.mileage.toLocaleString()} {carValue!.mileageUnit || 'km'}
                   </span>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-center">
                   <span className="block text-[11px] text-gray-500 font-medium">Transmission</span>
                   <span className="block text-xs sm:text-sm font-black text-gray-900 mt-0.5">
-                    {car.transmission}
+                    {carValue!.transmission}
                   </span>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-center">
                   <span className="block text-[11px] text-gray-500 font-medium">Fuel Type</span>
                   <span className="block text-xs sm:text-sm font-black text-gray-900 mt-0.5">
-                    {car.fuelType}
+                    {carValue!.fuelType}
                   </span>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-center">
                   <span className="block text-[11px] text-gray-500 font-medium">Engine</span>
                   <span className="block text-xs sm:text-sm font-black text-gray-900 mt-0.5 truncate">
-                    {car.engine.split(' ')[0]}
+                    {carValue!.engine.split(' ')[0]}
                   </span>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-center">
                   <span className="block text-[11px] text-gray-500 font-medium">Color</span>
                   <span className="block text-xs sm:text-sm font-black text-gray-900 mt-0.5 truncate">
-                    {car.color.split(' ')[0]}
+                    {carValue!.color.split(' ')[0]}
                   </span>
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-center">
                   <span className="block text-[11px] text-gray-500 font-medium">Condition</span>
                   <span className="block text-xs sm:text-sm font-black text-emerald-800 mt-0.5 truncate">
-                    {(car.condition || '').includes('Tokunbo') ? 'Tokunbo' : 'Nig. Used'}
+                    {(carValue!.condition || '').includes('Tokunbo') ? 'Tokunbo' : 'Nig. Used'}
                   </span>
                 </div>
               </div>
@@ -390,7 +475,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
             <div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-6 shadow-xs">
               <h3 className="text-base font-bold text-gray-900 mb-3">About This Vehicle</h3>
               <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                {car.description}
+                {carValue!.description}
               </p>
 
               <div className="mt-6 pt-6 border-t border-gray-100">
@@ -398,7 +483,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                   Vehicle Highlights
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {car.features.map((feat, idx) => (
+                  {carValue!.features.map((feat, idx) => (
                     <div key={idx} className="flex items-center gap-2 text-xs text-gray-700">
                       <CheckCircle2 className="w-4 h-4 text-[#0a502c] flex-shrink-0" />
                       <span>{feat}</span>
@@ -414,45 +499,45 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-xs">
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Make</span>
-                  <span className="font-bold text-gray-900">{car.make}</span>
+                  <span className="font-bold text-gray-900">{carValue!.make}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Model</span>
-                  <span className="font-bold text-gray-900">{car.model}</span>
+                  <span className="font-bold text-gray-900">{carValue!.model}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Year</span>
-                  <span className="font-bold text-gray-900">{car.year}</span>
+                  <span className="font-bold text-gray-900">{carValue!.year}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Mileage</span>
                   <span className="font-bold text-gray-900">
-                    {car.mileage.toLocaleString()} {car.mileageUnit || 'km'}
+                    {carValue!.mileage.toLocaleString()} {carValue!.mileageUnit || 'km'}
                   </span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Transmission</span>
-                  <span className="font-bold text-gray-900">{car.transmission}</span>
+                  <span className="font-bold text-gray-900">{carValue!.transmission}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Fuel Type</span>
-                  <span className="font-bold text-gray-900">{car.fuelType}</span>
+                  <span className="font-bold text-gray-900">{carValue!.fuelType}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Engine Capacity</span>
-                  <span className="font-bold text-gray-900">{car.engine}</span>
+                  <span className="font-bold text-gray-900">{carValue!.engine}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Drive Type</span>
-                  <span className="font-bold text-gray-900">{car.driveType}</span>
+                  <span className="font-bold text-gray-900">{carValue!.driveType}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Color</span>
-                  <span className="font-bold text-gray-900">{car.color}</span>
+                  <span className="font-bold text-gray-900">{carValue!.color}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="text-gray-500 font-medium">Seats</span>
-                  <span className="font-bold text-gray-900">{car.seats} Passengers</span>
+                  <span className="font-bold text-gray-900">{carValue!.seats} Passengers</span>
                 </div>
               </div>
             </div>
@@ -466,11 +551,11 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 <span className="text-xs text-gray-500 font-semibold block">Total Vehicle Price</span>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="text-3xl font-black text-[#0a502c]">
-                    ₦{car.priceNgn.toLocaleString()}
+                    ₦{carValue!.priceNgn.toLocaleString()}
                   </span>
-                  {car.priceUsd && (
+                  {carValue!.priceUsd && (
                     <span className="text-xs font-bold text-gray-500">
-                      (${car.priceUsd.toLocaleString()} USD)
+                      (${carValue!.priceUsd.toLocaleString()} USD)
                     </span>
                   )}
                 </div>
@@ -536,7 +621,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                   <div className="flex justify-between">
                     <span>Vehicle Price</span>
                     <span className="font-semibold text-gray-900">
-                      ₦{car.priceNgn.toLocaleString()}
+                      ₦{carValue!.priceNgn.toLocaleString()}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -552,7 +637,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Doorstep Delivery ({car.location})</span>
+                    <span>Doorstep Delivery ({carValue!.location})</span>
                     <span className="font-semibold text-gray-900">
                       ₦{deliveryFee.toLocaleString()}
                     </span>
@@ -565,7 +650,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
               </div>
 
               {/* Seller / Dealer Info (Featured in Web4) */}
-              {car.seller && (
+              {carValue!.seller && (
                 <div className="mt-6 pt-4 border-t border-gray-100">
                   <h4 className="font-bold text-xs text-gray-800 uppercase tracking-wider mb-3">
                     Dealer Information
@@ -576,18 +661,18 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-bold text-gray-900">{car.seller.name}</span>
-                        {car.seller.verified && (
+                        <span className="text-xs font-bold text-gray-900">{carValue!.seller.name}</span>
+                        {carValue!.seller.verified && (
                           <ShieldCheck className="w-3.5 h-3.5 text-[#0a502c]" />
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
                         <div className="flex items-center text-amber-500 font-bold">
                           <Star className="w-3 h-3 fill-amber-400" />
-                          <span className="ml-1">{car.seller.rating}</span>
+                          <span className="ml-1">{carValue!.seller.rating}</span>
                         </div>
                         <span>•</span>
-                        <span>{car.seller.reviewsCount} reviews</span>
+                        <span>{carValue!.seller.reviewsCount} reviews</span>
                       </div>
                     </div>
                   </div>
@@ -670,11 +755,11 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-emerald-800 uppercase block">Vehicle</span>
-                    <span className="text-xs font-bold text-slate-900">{car.year} {car.make} {car.model}</span>
+                    <span className="text-xs font-bold text-slate-900">{carValue!.year} {carValue!.make} {carValue!.model}</span>
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] font-bold text-emerald-800 uppercase block">Listed Price</span>
-                    <span className="text-xs font-black text-[#0a502c]">₦{car.priceNgn.toLocaleString()}</span>
+                    <span className="text-xs font-black text-[#0a502c]">₦{carValue!.priceNgn.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -800,7 +885,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
               <form onSubmit={handleInspectionSubmit} className="space-y-3.5">
                 <p className="text-xs text-gray-600 leading-relaxed">
                   Book a physical appointment or live diagnostic video tour for stock{' '}
-                  <strong className="font-mono text-gray-800">{car.stockId}</strong>.
+                  <strong className="font-mono text-gray-800">{carValue!.stockId}</strong>.
                 </p>
 
                 <div>
@@ -923,7 +1008,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
 
             <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
               <span className="text-xs font-medium text-emerald-900">Vehicle Price:</span>
-              <span className="text-sm font-black text-emerald-900">₦{car.priceNgn.toLocaleString()}</span>
+              <span className="text-sm font-black text-emerald-900">₦{carValue!.priceNgn.toLocaleString()}</span>
             </div>
 
             <div className="space-y-4">

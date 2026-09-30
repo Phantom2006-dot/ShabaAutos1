@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { bookVehicleRental, RentalVehicleApiRecord, fetchPublicSettings } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 import bmwHeroBlack from '../assets/images/bmw_hero_coupe_1789257165323.jpg';
 import bmwHeroSilver from '../assets/images/bmw_silver_coupe_1789257180258.jpg';
 
@@ -36,6 +37,7 @@ interface RentCarScreenProps {
 }
 
 export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
+  const { user, isSignedIn, isLoaded } = useAuthUser();
   const [pickupLocation, setPickupLocation] = useState('Lagos - Murtala Muhammed Airport (LOS)');
   const [pickupDate, setPickupDate] = useState(new Date().toISOString().slice(0, 10));
   const [pickupTime, setPickupTime] = useState('10:00 AM');
@@ -54,13 +56,25 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
 
   // Booking Modal State
   const [activeCarForBooking, setActiveCarForBooking] = useState<any | null>(null);
-  const [renterName, setRenterName] = useState('Emeka Obi');
-  const [renterPhone, setRenterPhone] = useState('+234 803 456 7890');
-  const [renterEmail, setRenterEmail] = useState('emeka.obi@gmail.com');
+  const [renterName, setRenterName] = useState('');
+  const [renterPhone, setRenterPhone] = useState('');
+  const [renterEmail, setRenterEmail] = useState('');
   const [withChauffeur, setWithChauffeur] = useState(false);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [bookingResult, setBookingResult] = useState<any | null>(null);
   const [copiedBookingId, setCopiedBookingId] = useState(false);
+
+  // Prefill renter contact from the real authenticated user — never a fake persona。
+
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && user) {
+      setRenterName((prev) => prev || user.fullName || '');
+      setRenterPhone((prev) => prev || user.phone || '');
+      setRenterEmail((prev) => prev || user.email || '');
+    }
+  }, [isLoaded, isSignedIn, user]);
 
   // Hero Carousel State
   const [heroSlide, setHeroSlide] = useState(0);

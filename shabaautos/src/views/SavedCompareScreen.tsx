@@ -23,12 +23,14 @@ import {
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { fetchMyComparison } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 
 interface SavedCompareScreenProps {
   onNavigate: (screen: ScreenId) => void;
 }
 
 export const SavedCompareScreen: React.FC<SavedCompareScreenProps> = ({ onNavigate }) => {
+  const { user, isSignedIn, isLoaded } = useAuthUser();
   const [cars, setCars] = useState<Car[]>([]);
 
   useEffect(() => {
@@ -75,11 +77,11 @@ export const SavedCompareScreen: React.FC<SavedCompareScreenProps> = ({ onNaviga
             <div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-4 shadow-xs">
               <div className="flex items-center gap-3 p-3 border-b border-gray-100 pb-4 mb-2">
                 <div className="w-10 h-10 rounded-full bg-[#0a502c] text-white flex items-center justify-center font-bold text-sm">
-                  OA
+                  {isSignedIn ? ((user?.fullName || user?.email || 'G').charAt(0).toUpperCase()) : 'G'}
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-gray-900">Oluwasegun Ajibola</h4>
-                  <p className="text-[10px] text-gray-500">ID: SA-10245</p>
+                  <h4 className="text-xs font-bold text-gray-900">{isSignedIn ? (user?.fullName || user?.email || 'ShabaAutos Customer') : 'Guest'}</h4>
+                  <p className="text-[10px] text-gray-500">Customer Portal</p>
                 </div>
               </div>
 
@@ -121,7 +123,7 @@ export const SavedCompareScreen: React.FC<SavedCompareScreenProps> = ({ onNaviga
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100"
                 >
                   <Package className="w-4 h-4 text-gray-400" />
-                  My Import Orders (1)
+                  My Import Orders
                 </button>
 
                 <button

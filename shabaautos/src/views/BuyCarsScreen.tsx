@@ -122,11 +122,7 @@ export const BuyCarsScreen: React.FC<BuyCarsScreenProps> = ({
 
   const handleCarClick = (car: Car) => {
     onSelectCar(car.id, car);
-    if (car.id === 'rav4-2022') {
-      onNavigate('car-details-rav4');
-    } else {
-      onNavigate('car-details');
-    }
+    onNavigate('car-details');
   };
 
   const renderFilterContent = () => (

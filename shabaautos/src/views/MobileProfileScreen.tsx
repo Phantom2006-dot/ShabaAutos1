@@ -36,13 +36,13 @@ export const MobileProfileScreen: React.FC<MobileProfileScreenProps> = ({
   const [copiedId, setCopiedId] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'settings'>('overview');
   const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(user?.fullName || 'Emeka Obi');
-  const [editPhone, setEditPhone] = useState(user?.phone || '+234 803 456 7890');
+  const [editName, setEditName] = useState(user?.fullName || '');
+  const [editPhone, setEditPhone] = useState(user?.phone || '');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const handleCopyId = () => {
     if (!user) return;
-    navigator.clipboard.writeText(user.id || 'usr_shaba_01');
+    navigator.clipboard.writeText(user.id || '');
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2000);
   };
@@ -158,7 +158,7 @@ export const MobileProfileScreen: React.FC<MobileProfileScreenProps> = ({
               <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
               <div className="flex items-center gap-1 text-xs text-slate-600 mt-1 font-medium">
                 <Phone className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-                <span className="truncate">{isEditing ? editPhone : user.phone || '+234 803 456 7890'}</span>
+                <span className="truncate">{isEditing ? editPhone : user.phone || ''}</span>
               </div>
 
               {/* Role & Verification Badge */}

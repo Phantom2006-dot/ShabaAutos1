@@ -26,37 +26,108 @@ import {
   Anchor,
   Radio,
 } from 'lucide-react';
-import { TRACKED_ORDER } from '../data/cars';
 import { ScreenId } from '../types';
 import { trackOrderShipment } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 
 interface OrderTrackingScreenProps {
   onNavigate: (screen: ScreenId) => void;
 }
 
+interface TrackedOrder {
+  orderId: string;
+  status: string;
+  orderDate: string;
+  estDeliveryDate: string;
+  shippingLine: string;
+  vesselName: string;
+  trackingNumber: string;
+  originPort: string;
+  destinationPort: string;
+  car: {
+    name: string;
+    priceUsd: number;
+    priceNgn: number;
+    vin: string;
+    specs: string;
+    image: string;
+  };
+  steps: Array<{ title: string; date: string; description: string; completed: boolean; current: boolean }>;
+  documents: Array<{ name: string; type: string; size: string }>;
+  assignedAgent: { name: string; role: string; avatar: string; phone: string };
+}
+
+const EMPTY_ORDER: TrackedOrder = {
+  orderId: '—',
+  status: '—',
+  orderDate: '—',
+  estDeliveryDate: '—',
+  shippingLine: '—',
+  vesselName: '—',
+  trackingNumber: '—',
+  originPort: '—',
+  destinationPort: '—',
+  car: { name: '—', priceUsd: 0, priceNgn: 0, vin: '—', specs: '—', image: '' },
+  steps: [],
+  documents: [],
+  assignedAgent: { name: 'ShabaAutos Import Team', role: 'Logistics & Customs Support', avatar: '', phone: '+234 812 345 6789' },
+};
+
 export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavigate }) => {
-  const [currentOrder, setCurrentOrder] = useState(TRACKED_ORDER);
-  const [searchTrackingId, setSearchTrackingId] = useState(TRACKED_ORDER.orderId);
+  const { user, isSignedIn, isLoaded } = useAuthUser();
+  const [currentOrder, setCurrentOrder] = useState<TrackedOrder>(EMPTY_ORDER);
+  const [searchTrackingId, setSearchTrackingId] = useState('');
   const [copiedOrderId, setCopiedOrderId] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [showGpsModal, setShowGpsModal] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   const handleSearchTracking = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchTrackingId.trim()) return;
+    if (!searchTrackingId.trim()) { setOrderError('Enter a tracking ID or VIN to look up your shipment.'); return; }
     setIsSearching(true);
+    setOrderError(null);
     try {
       const res = await trackOrderShipment(searchTrackingId);
-      if (res && res.status) {
-        setCurrentOrder(prev => ({
-          ...prev,
-          orderId: searchTrackingId.trim().toUpperCase(),
-          status: res.status || prev.status,
-          estDeliveryDate: res.estimatedArrival || prev.estDeliveryDate,
-          vesselName: res.vesselName || prev.vesselName,
-        }));
+      if (res?.success && res.data) {
+        const d = res.data;
+        const carName = [d.car?.year, d.car?.make, d.car?.model].filter(Boolean).join(' ');
+        setCurrentOrder({
+          orderId: d.orderId || searchTrackingId.trim().toUpperCase(),
+          status: d.status || 'In Transit',
+          orderDate: d.orderDate || '—',
+          estDeliveryDate: d.estimatedArrival || d.estDeliveryDate || '—',
+          shippingLine: d.shippingLine || '—',
+          vesselName: d.vesselName || '—',
+          trackingNumber: d.trackingNumber || d.containerNo || '—',
+          originPort: d.originPort || '—',
+          destinationPort: d.destinationPort || '—',
+          car: {
+            name: carName || 'Vehicle',
+            priceUsd: d.car?.priceUsd ?? 0,
+            priceNgn: d.car?.priceNgn ?? 0,
+            vin: d.car?.vin || '—',
+            specs: d.car?.specs || '',
+            image: d.car?.image || '',
+          },
+          steps: (d.steps || []).map((st, i) => ({
+            title: st.title || '',
+            date: st.scheduledDate || st.date || '',
+            description: st.description || '',
+            completed: !!st.completed,
+            current: !!st.current,
+          })),
+          documents: [],
+          assignedAgent: currentOrder.assignedAgent,
+        });
+        setOrderError(null);
+      } else {
+        setCurrentOrder(prev => ({ ...prev, steps: [], documents: [] }));
+        setOrderError(res?.message || 'No shipment found matching that tracking ID or VIN.' );
       }
+    } catch {
+      setOrderError('Tracking is temporarily unavailable. Please try again.');
     } finally {
       setIsSearching(false);
     }
@@ -101,11 +172,11 @@ Authorized by ShabaAutos Logistics Port Agency.`;
             <div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-4 shadow-xs">
               <div className="flex items-center gap-3 p-3 border-b border-gray-100 pb-4 mb-2">
                 <div className="w-10 h-10 rounded-full bg-[#0a502c] text-white flex items-center justify-center font-bold text-sm">
-                  OA
+                  {isSignedIn ? ((user?.fullName || user?.email || 'G').charAt(0).toUpperCase()) : 'G'}
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-gray-900">Oluwasegun Ajibola</h4>
-                  <p className="text-[10px] text-gray-500">ID: SA-10245</p>
+                  <h4 className="text-xs font-bold text-gray-900">{isSignedIn ? (user?.fullName || user?.email || 'ShabaAutos Customer') : 'Guest'}</h4>
+                  <p className="text-[10px] text-gray-500">Customer Portal</p>
                 </div>
               </div>
 
@@ -123,7 +194,7 @@ Authorized by ShabaAutos Logistics Port Agency.`;
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100"
                 >
                   <Heart className="w-4 h-4 text-gray-400" />
-                  Saved &amp; Compare (4)
+                  Saved & Compare
                 </button>
 
                 <button
@@ -131,7 +202,7 @@ Authorized by ShabaAutos Logistics Port Agency.`;
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-gray-100"
                 >
                   <FileText className="w-4 h-4 text-gray-400" />
-                  Sourcing Requests
+                  Request Import Quote
                 </button>
 
                 <button
@@ -144,7 +215,7 @@ Authorized by ShabaAutos Logistics Port Agency.`;
 
                 <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-emerald-50 text-[#0a502c] font-bold">
                   <Package className="w-4 h-4 text-[#0a502c]" />
-                  My Orders (1)
+                  Track Import Order
                 </button>
 
                 <button
@@ -192,6 +263,12 @@ Authorized by ShabaAutos Logistics Port Agency.`;
                   <span>{isSearching ? 'Tracking...' : 'Track Order'}</span>
                 </button>
               </form>
+              {orderError && (
+                <div className="mt-3 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
+                  <X className="w-4 h-4 text-red-500 shrink-0" />
+                  {orderError}
+                </div>
+              )}
               {downloadSuccess && (
                 <div className="mt-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />

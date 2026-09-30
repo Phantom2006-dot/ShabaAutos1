@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FileText,
   Search,
@@ -16,12 +16,14 @@ import {
 import { ScreenId } from '../types';
 import { TrustBadges } from '../components/TrustBadges';
 import { submitImportOrder } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 
 interface ImportFormScreenProps {
   onNavigate: (screen: ScreenId) => void;
 }
 
 export const ImportFormScreen: React.FC<ImportFormScreenProps> = ({ onNavigate }) => {
+  const { user, isSignedIn, isLoaded } = useAuthUser();
   const [currentStep, setCurrentStep] = useState(1);
   const [vehicleType, setVehicleType] = useState('SUV');
   const [make, setMake] = useState('Toyota');
@@ -40,15 +42,27 @@ export const ImportFormScreen: React.FC<ImportFormScreenProps> = ({ onNavigate }
     'Lane assist',
   ]);
 
-  const [fullName, setFullName] = useState('John Doe');
-  const [phone, setPhone] = useState('+234 810 123 4567');
-  const [email, setEmail] = useState('johndoe@gmail.com');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [trackingId, setTrackingId] = useState('');
   const [copiedTracking, setCopiedTracking] = useState(false);
+
+  // Prefill contact details from the real authenticated user — never a fake persona。
+
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && user) {
+      setFullName((prev) => prev || user.fullName || '');
+      setPhone((prev) => prev || user.phone || '');
+      setEmail((prev) => prev || user.email || '');
+    }
+  }, [isLoaded, isSignedIn, user]);
 
   const availableFeatures = [
     'Leather seats',

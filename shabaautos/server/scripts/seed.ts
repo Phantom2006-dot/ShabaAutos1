@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { getDatabaseService, getDatabaseType } from '../database/index';
-import { BUY_CARS_INVENTORY, POPULAR_CARS, RENTAL_CARS, TRACKED_ORDER } from '../../src/data/cars';
+import { BUY_CARS_INVENTORY, POPULAR_CARS, RENTAL_CARS, TRACKED_ORDER } from './seedData';
 import { getPostgresPool } from '../database/postgres';
 import { getDatabase } from '../database/sqlite';
 

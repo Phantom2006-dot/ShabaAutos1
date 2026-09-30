@@ -21,7 +21,7 @@ import { MobileSidebar } from './components/MobileSidebar';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenId>('home');
-  const [selectedCarId, setSelectedCarId] = useState<string>('car-1');
+  const [selectedCarId, setSelectedCarId] = useState<string | undefined>(undefined);
   const [selectedCar, setSelectedCar] = useState<Car | undefined>();
   const [previousScreen, setPreviousScreen] = useState<ScreenId>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -50,14 +50,12 @@ export default function App() {
 
   const handleNavigate = (screen: ScreenId) => {
     setMobileMenuOpen(false);
-    if (screen === 'car-details-rav4') {
-      setSelectedCarId('rav4-2022');
-      setCurrentScreen('car-details');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-    if (screen === 'car-details') {
-      setSelectedCarId('car-1');
+    if (screen === 'car-details' || screen === 'car-details-rav4') {
+      // No fake fallback vehicle — render the neutral “no vehicle selected” state;
+      // real vehicles are only ever opened through handleSelectCar with the full DB record.
+
+      setSelectedCarId(undefined);
+      setSelectedCar(undefined);
       setCurrentScreen('car-details');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;

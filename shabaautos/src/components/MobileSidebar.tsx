@@ -346,7 +346,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleNavClick('car-details-rav4')}
+                    onClick={() => handleNavClick('buy-cars')}
                     className="w-full text-left py-1.5 text-xs font-semibold text-gray-600 hover:text-[#12492f] block cursor-pointer"
                   >
                     • SUVs & Crossovers (Toyota, Lexus, Benz)

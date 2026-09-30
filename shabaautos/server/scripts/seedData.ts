@@ -1,4 +1,4 @@
-import { Car, RentalCar, ImportOrder } from '../types';
+import { Car, RentalCar, ImportOrder } from '../../src/types';
 
 export const POPULAR_CARS: Car[] = [
   {

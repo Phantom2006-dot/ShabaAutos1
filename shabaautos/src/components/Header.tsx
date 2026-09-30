@@ -351,7 +351,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
 
                   <button
-                    onClick={() => handleNavClick('car-details-rav4')}
+                    onClick={() => handleNavClick('buy-cars')}
                     className="shabaautos-dropdown-item group"
                   >
                     <div className="w-7 h-7 rounded-md bg-emerald-50 text-[#158047] flex items-center justify-center shrink-0 group-hover:bg-[#12492f] group-hover:text-white transition-colors">
