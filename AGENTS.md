@@ -17,13 +17,23 @@ Nigeria car marketplace — buy / rent / US-import / sell flows + staff/admin CM
 - `GET /api/settings/public` — rate/fee settings (booking/estimator/detail screens fetch with `fetchPublicSettings()`; env-var fallbacks with defaults in server.ts).
 - `GET /api/vehicles`, `/api/me/saved-vehicles`, `/api/me/comparison`, `/api/me/saved-searches`, import/rental/inspection/submit endpoints — real DB-backed.
 
-
 ## Frontend conventions
-- Real data flows come from `src/services/api.ts` (`apiFetch`, `fetchPublicSettings`, `fetchMySavedVehicles`, `fetchMyComparison`...); unauth `/api/me/*` → 401 `{success:false}` → UI must fall back to empty, not demo ids.
+- Real data flows come from `src/services/api.ts` (`apiFetch`, `fetchPublicSettings`, `fetchMySavedVehicles`, `fetchMyComparison`, `fetchVehicleById`, `trackOrderShipment`, ...); unauth `/api/me/*` → 401 `{success:false}` → UI must fall back to empty, not demo ids。
 
+
+- No static/mock car data: `src/data/cars.ts` deleted (frontend screens fully DB-backed。Seed catalog lives only at `server/scripts/seedData.ts` (imported by `server/scripts/seed.ts` for DB seeding; never imported by frontend))。
+
+
+
+- All contact-prefill forms use `useAuthUser()` from the real Clerk session — no fake personas/phones/emails anywhere. Grep `@example.com`, `John Doe`, `Emeka Obi`, `Oluwasegun`, `SA-10245` must stay empty。
+ 
 ## Git
-- Branch `feat/cms-vehicle-crud-cloudinary` holds de-mock/seed work (HEAD stacked commits `5deb4e5`, `0c0461e`, `c25ea27`) atop `main` (`82e00dc1`).
-- **Push blocked**: ambient `GITHUB_TOKEN` lacks push rights on this repo (403). Combined patch regenerated at `/tmp/shabaautos-dynamic.patch` (`git format-patch main..HEAD`) — apply/推 with user's own credentials.
+- Branch `feat/cms-vehicle-crud-cloudinary` holds de-mock/seed work. Pushed HEAD: `75b5f1e` (fully de-mock remaining static flows app-wide)); prior `9df7bc1` (SellCar + ImportLanding)。
 
+- Push rights working on the ambient token now。(verified `git push origin feat/cms-vehicle-crud-cloudinary` OK)。
+ 
 ## Verify
-- Smoke: home 200, `/api/vehicles` 200, `/api/settings/public` returns JSON, `/api/settings` (ops) unauth 401.
+- Smoke: home 200, `/api/vehicles` 200, `/api/vehicles/:id` 200 (CarDetail fetch-by-ID), `/api/tracking/ORD-2024-0891`  ́200 (OrderTracking), `/api/settings/public` returns JSON; `/api/settings` (ops) unauth 401。
+
+
+- Preview: `work-1-rfcaqlznacxpuvko.prod-runtime.all-hands.dev` (port 12000) serves ​200 with health `{demoMode:false}`。 `work-2` (port 12001) has no service。
