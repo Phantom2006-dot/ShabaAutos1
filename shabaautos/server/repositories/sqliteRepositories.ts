@@ -498,7 +498,7 @@ export class SqliteVehicleRepository implements IVehicleRepository {
   }
 
   async delete(id: string): Promise<boolean> {
-    const res = this.db.prepare("UPDATE vehicles SET status = 'delisted', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
+    const res = this.db.prepare('DELETE FROM vehicles WHERE id = ?').run(id);
     return (res as any).changes > 0;
   }
 
@@ -1467,7 +1467,7 @@ export class SqliteSellRepository implements ISellRepository {
           id, user_id, seller_name, phone, email, make, model, year, trim,
           mileage, condition, issues, location, asking_price_ngn, estimated_value_ngn,
           status, inspector_notes, photo_urls_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         newSell.id,

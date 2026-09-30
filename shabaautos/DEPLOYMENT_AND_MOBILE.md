@@ -26,9 +26,7 @@ fly auth login
 fly apps create shabaautos-api
 fly secrets set \
   DATABASE_URL="postgresql://..." \
-  VITE_CLERK_PUBLISHABLE_KEY="pk_..." \
   CLERK_SECRET_KEY="sk_..." \
-  CLERK_JWT_ISSUER_DOMAIN="https://..." \
   CLERK_WEBHOOK_SIGNING_SECRET="whsec_..." \
   APP_URL="https://YOUR-VERCEL-APP.vercel.app" \
   CORS_ALLOWED_ORIGINS="https://YOUR-VERCEL-APP.vercel.app" \
@@ -47,19 +45,21 @@ Set these as Fly secrets; never commit them to GitHub:
 |---|---:|---|
 | `DATABASE_URL` | Yes | Neon PostgreSQL connection string. Use the pooled Neon connection string for the deployed API. |
 | `CLERK_SECRET_KEY` | Yes | Server-side Clerk token verification. |
-| `CLERK_JWT_ISSUER_DOMAIN` | Recommended | Clerk JWT issuer/domain used during token verification. |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | If webhooks are enabled | Verifies Clerk webhook signatures. |
 | `CORS_ALLOWED_ORIGINS` | Yes | Exact Vercel origin, for example `https://shabaautos.vercel.app`. |
 | `APP_URL` | Yes | Canonical frontend URL used in links and server configuration. |
 | `GROQ_API_KEY` | Optional | Enables the optional AI assistance endpoints. Leave unset to use the safe deterministic response. |
+| `CLOUDINARY_CLOUD_NAME` | Optional | Enables durable uploaded image storage with the two Cloudinary credentials below. |
+| `CLOUDINARY_API_KEY` | Optional | Cloudinary server credential for image uploads and deletion. |
+| `CLOUDINARY_API_SECRET` | Optional | Cloudinary server credential for image uploads and deletion. |
 
-These are non-secret Fly environment variables and can be declared in `fly.toml`: `NODE_ENV=production`, `PORT=8080`, `DEMO_MODE=false`, and `SEED_DATABASE=false`. `USE_SQLITE` should remain unset or `false` on Fly.io. `VITE_CLERK_PUBLISHABLE_KEY` is a **Vercel frontend variable**, not a Fly secret; the browser needs it to initialize Clerk. `VITE_API_BASE_URL` is also a Vercel variable and should point to the Fly HTTPS URL.
+These are non-secret Fly environment variables and can be declared in `fly.toml`: `NODE_ENV=production`, `PORT=8080`, `DEMO_MODE=false`, `SEED_DATABASE=false`, `USE_SQLITE=false`, `STORAGE_DRIVER=cloudinary`, and `ACTIVITY_TRACKING=true`. `VITE_CLERK_PUBLISHABLE_KEY` is a **Vercel frontend variable**, not a Fly secret; the browser needs it to initialize Clerk. `VITE_API_BASE_URL` is also a Vercel variable and should point to the Fly HTTPS URL. Do not put either `VITE_*` value in Fly secrets.
 
 ### Keeping Fly.io usage low
 
 The included `fly.toml` is configured with a single shared-CPU, 512 MB machine, automatic stopping when idle, automatic starting on request, and zero minimum running machines. This minimizes idle compute, but the first request after an idle period can be slower. Do not add a second machine, a persistent volume, or an always-on worker unless the product needs it. Neon remains the durable database, so the Fly machine does not need to store application data locally. Avoid `USE_SQLITE=true` in production because SQLite would make scale-out and restarts unsafe.
 
-The container listens on Fly's `PORT=8080`, exposes `/api/health` for liveness, and uses `/api/ready` as the readiness check. Neon remains the production database; do not set `USE_SQLITE=true` in Fly production.
+The container listens on Fly's `PORT=8080`, exposes `/api/health` for liveness, and uses `/api/ready` as the readiness check. Neon remains the production database; do not set `USE_SQLITE=true` in Fly production. Local `/uploads` storage is ephemeral on Fly and must not be used for production vehicle images; configure all three Cloudinary variables or uploaded files can be lost on machine replacement.
 
 ## Production checklist
 

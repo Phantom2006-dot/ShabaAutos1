@@ -97,10 +97,23 @@ CREATE TABLE IF NOT EXISTS vehicle_images (
   url TEXT NOT NULL,
   display_order INTEGER NOT NULL DEFAULT 0,
   caption VARCHAR(255),
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  public_id VARCHAR(255),
+  asset_id VARCHAR(255),
+  width INTEGER,
+  height INTEGER,
+  format VARCHAR(32),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_vehicle_images_vehicle_id ON vehicle_images(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_images_public_id ON vehicle_images(public_id);
+ALTER TABLE vehicle_images ADD COLUMN IF NOT EXISTS is_primary BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE vehicle_images ADD COLUMN IF NOT EXISTS public_id VARCHAR(255);
+ALTER TABLE vehicle_images ADD COLUMN IF NOT EXISTS asset_id VARCHAR(255);
+ALTER TABLE vehicle_images ADD COLUMN IF NOT EXISTS width INTEGER;
+ALTER TABLE vehicle_images ADD COLUMN IF NOT EXISTS height INTEGER;
+ALTER TABLE vehicle_images ADD COLUMN IF NOT EXISTS format VARCHAR(32);
 
 -- 5. Saved Vehicles
 CREATE TABLE IF NOT EXISTS saved_vehicles (

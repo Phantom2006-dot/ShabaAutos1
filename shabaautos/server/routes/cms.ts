@@ -244,6 +244,10 @@ router.delete(
   requireRole(['staff', 'admin']),
   async (req: Request, res: Response) => {
     try {
+      const vehicle = await db().vehicles.findById(req.params.id);
+      if (!vehicle) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
+      const belongsToVehicle = (await db().vehicles.getImages(req.params.id)).some((item) => item.id === req.params.imageId);
+      if (!belongsToVehicle) return res.status(404).json({ success: false, message: 'Image not found for this vehicle.' });
       const image = await db().vehicles.deleteImage(req.params.imageId);
       if (!image) return res.status(404).json({ success: false, message: 'Image not found.' });
       await removeStoredImage(image.url, image.publicId);

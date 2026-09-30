@@ -7,6 +7,10 @@ primary_region = "jnb"
 [env]
   NODE_ENV = "production"
   PORT = "8080"
+  DEMO_MODE = "false"
+  SEED_DATABASE = "false"
+  USE_SQLITE = "false"
+  ACTIVITY_TRACKING = "true"
 
 [http_service]
   internal_port = 8080

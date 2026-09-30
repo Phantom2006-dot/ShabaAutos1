@@ -859,6 +859,14 @@ export async function approveOperationsVehicle(id: string, token?: string): Prom
   return res.json();
 }
 
+export async function deleteOperationsVehicle(id: string, token?: string): Promise<{ success: boolean; message?: string }> {
+  const res = await apiFetch(`/api/ops/vehicles/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  return res.json();
+}
+
 export async function fetchOperationsNotifications(token?: string): Promise<{ success: boolean; data: OperationsNotification[] }> {
   const res = await apiFetch('/api/ops/notifications', { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
   return res.json();
