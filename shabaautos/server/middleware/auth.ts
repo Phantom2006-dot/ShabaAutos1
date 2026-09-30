@@ -103,7 +103,7 @@ export async function getAuthenticatedClerkUser(req: Request): Promise<Authentic
         const role: UserRole = validRoles.includes(rolePart) ? rolePart : 'customer';
 
         let email = `demo.${role}@shabaautos.com`;
-        let fullName = role === 'admin' ? 'Shaba Dealership Admin' : role === 'staff' ? 'Shaba Operations Staff' : 'Oluwasegun Adeleke';
+        let fullName = role === 'admin' ? 'Shaba Dealership Admin' : role === 'staff' ? 'Shaba Operations Staff' : 'ShabaAutos Demo Customer';
         let phone = '+2348031234567';
         const clerkId = `user_demo_${role}_2026`;
 
