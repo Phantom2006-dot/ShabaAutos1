@@ -77,7 +77,13 @@ export default defineConfig(() => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      allowedHosts: ['.manus.computer', '.replit.dev', '.replit.app', 'localhost'],
+      allowedHosts: [
+        '.manus.computer',
+        '.replit.dev',
+        '.replit.app',
+        '.prod-runtime.all-hands.dev',
+        'localhost',
+      ],
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },

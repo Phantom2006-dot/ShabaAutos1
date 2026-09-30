@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   CheckCircle2,
   Lock,
@@ -17,13 +17,63 @@ import {
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { TrustBadges } from '../components/TrustBadges';
-import { submitSellCarValuation } from '../services/api';
+import { submitSellCarValuation, fetchPublicSettings } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
+
+// Same configurable valuation engine the backend uses (server.ts computeValuation).
+// Mirrors admin-editable site_settings['valuation.base_prices'] so the "expected"
+// offer range stays consistent with the server, not fabricated on the client.
+async function loadBasePrices(): Promise<Record<string, number>> {
+  const defaults: Record<string, number> = { Toyota: 28000000, Lexus: 38000000, Mercedes: 45000000, Honda: 22000000, Hyundai: 18000000, Ford: 24000000 };
+  try {
+    const settings = await fetchPublicSettings();
+    const raw = settings['valuation.base_prices']?.value;
+    if (typeof raw === 'string' || typeof raw === 'object') {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (parsed && typeof parsed === 'object') {
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          const n = typeof v === 'number' ? v : Number(String(v));
+          if (!Number.isNaN(n)) out[k] = n;
+        }
+        return Object.keys(out).length > 0 ? { ...defaults, ...out } : defaults;
+      }
+    }
+    return defaults;
+  } catch {
+    return defaults;
+  }
+}
 
 interface SellCarScreenProps {
   onNavigate: (screen: ScreenId) => void;
 }
+// Mirrors the backend engine's age/mileage/condition factors (server.ts computeValuation).
+function computeEstimatedValue(
+  make: string,
+  year: string,
+  mileage: string,
+  condition: string,
+  basePrices: Record<string, number>
+): number | null {
+  const currentYear = new Date().getFullYear();
+  const carYear = parseInt(year, 10);
+  const carMileage = parseInt(mileage, 10);
+  if (!make.trim() || !carYear || carYear > currentYear || carYear < 1990 || Number.isNaN(carMileage)) return null;
+
+  const makeKey = Object.keys(basePrices).find((k) => make.toLowerCase().includes(k.toLowerCase())) || 'Toyota';
+  const base = basePrices[makeKey] ?? basePrices['Toyota'];
+
+  const age = Math.max(0, currentYear - carYear);
+  const ageFactor = Math.max(0.4, 1 - age * 0.05);
+  const mileageFactor = Math.max(0.65, 1 - (carMileage / 10000) * 0.03);
+  const conditionFactor = condition === 'Excellent' ? 1.15 : condition === 'Needs Work' ? 0.7 : condition === 'Fair' ? 0.8 : 1;
+
+  return Math.round((base * ageFactor * mileageFactor * conditionFactor) / 100000) * 100000;
+}
 
 export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
+  const { user, isSignedIn, isLoaded } = useAuthUser();
   const [agreementChecked, setAgreementChecked] = useState(true);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -38,44 +88,92 @@ export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
 
   // Form State
   const [carData, setCarData] = useState({
-    make: 'Toyota',
-    model: 'Camry',
-    year: '2020',
-    trim: 'XLE',
-    mileage: '45000',
+    make: '',
+    model: '',
+    year: '',
+    trim: '',
+    mileage: '',
     transmission: 'Automatic',
     fuelType: 'Petrol',
-    location: 'Lekki, Lagos',
-    askingPrice: '15000000',
+    location: '',
+    askingPrice: '',
   });
 
   const [conditionData, setConditionData] = useState({
     condition: 'Good',
-    issues: 'No major issues reported. Regular servicing maintained.',
+    issues: '',
   });
 
   const [contactData, setContactData] = useState({
-    fullName: 'John Doe',
-    phone: '+234 810 123 4567',
-    email: 'johndoe@gmail.com',
+    fullName: '',
+    phone: '',
+    email: '',
   });
+
+  // Configurable valuation base prices (admin-editable via /api/ops/settings).
+  const [basePrices, setBasePrices] = useState<Record<string, number>>({});
+  const [estRange, setEstRange] = useState<{ low: number; high: number } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    loadBasePrices().then((bp) => {
+      if (active) setBasePrices(bp);
+    });
+    return () => { active = false; };
+  }, []);
+
+  // Prefill contact details from the authenticated user (never a fabricated persona).
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && user) {
+      setContactData((prev) => ({
+        ...prev,
+        fullName: prev.fullName || user.fullName || '',
+        phone: prev.phone || user.phone || '',
+        email: prev.email || user.email || '',
+      }));
+    }
+  }, [isLoaded, isSignedIn, user]);
+
+  useEffect(() => {
+    const estimate = basePrices && computeEstimatedValue(carData.make, carData.year, carData.mileage, conditionData.condition, basePrices);
+    setEstRange(estimate
+      ? { low: Math.round(estimate * 0.9), high: Math.round(estimate * 1.1) }
+      : null);
+  }, [carData.make, carData.year, carData.mileage, conditionData.condition, basePrices]);
 
   const handleSubmitValuation = async () => {
     if (!agreementChecked) return;
+    const missing: string[] = [];
+    if (!carData.make.trim() || !carData.model.trim()) missing.push('make and model');
+    if (!parseInt(carData.year, 10)) missing.push('year');
+    if (!parseInt(carData.mileage, 10)) missing.push('mileage');
+    if (!contactData.fullName.trim()) missing.push('full name');
+    if (!contactData.phone.trim()) missing.push('phone');
+
+    if (missing.length > 0) {
+      setSubmitError(`Please fill in the vehicle details first (${missing.join(', ')}).`);
+      return;
+    }
+    const year = parseInt(carData.year, 10);
+    if (year > new Date().getFullYear() || year < 1900) {
+      setSubmitError('Please enter a valid vehicle year.');
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError('');
     try {
       const res = await submitSellCarValuation({
-        year: parseInt(carData.year) || 2020,
-        make: carData.make,
-        model: carData.model,
-        mileage: parseInt(carData.mileage) || 45000,
+        year,
+        make: carData.make.trim(),
+        model: carData.model.trim(),
+        mileage: parseInt(carData.mileage, 10),
         condition: conditionData.condition,
-        sellerName: contactData.fullName,
-        phone: contactData.phone,
-        email: contactData.email,
-        location: carData.location,
-        askingPriceNgn: parseInt(carData.askingPrice) || 15000000,
+        sellerName: contactData.fullName.trim(),
+        phone: contactData.phone.trim(),
+        email: contactData.email.trim() || undefined,
+        location: carData.location.trim() || undefined,
+        askingPriceNgn: parseInt(carData.askingPrice, 10) || undefined,
       });
       if (!res?.success || !res.data?.id) throw new Error(res?.message || 'Vehicle valuation could not be submitted.');
       setSubmissionId(res.data.id);
@@ -119,7 +217,9 @@ export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-gray-900">1. Car Details</h4>
-                    <p className="text-[11px] text-gray-500">Toyota Camry 2020</p>
+                    <p className="text-[11px] text-gray-500">
+                      {carData.make && carData.model ? `${carData.make} ${carData.model} ${carData.year}`.trim() : 'Not provided yet'}
+                    </p>
                   </div>
                 </div>
 
@@ -130,7 +230,7 @@ export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-gray-900">2. Condition</h4>
-                    <p className="text-[11px] text-gray-500">Good Condition</p>
+                    <p className="text-[11px] text-gray-500">{conditionData.condition || 'Not provided yet'}</p>
                   </div>
                 </div>
 
@@ -141,7 +241,9 @@ export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-gray-900">3. Your Details</h4>
-                    <p className="text-[11px] text-gray-500">John Doe (+234...)</p>
+                    <p className="text-[11px] text-gray-500">
+                      {contactData.fullName ? (contactData.phone ? `${contactData.fullName} (${contactData.phone})` : contactData.fullName) : 'Not provided yet'}
+                    </p>
                   </div>
                 </div>
 
@@ -165,7 +267,9 @@ export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
                 Our vehicle appraisers can come directly to your office or home in Lagos, Abuja, or Port Harcourt.
               </p>
               <a
-                href="https://wa.me/2348123456789"
+                href={contactData.phone
+                  ? `https://wa.me/${contactData.phone.replace(/\D/g, '')}`
+                  : 'https://wa.me/2348000000000'}
                 target="_blank"
                 rel="noreferrer"
                 className="w-full py-2 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-xs"
@@ -543,21 +647,35 @@ export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
               <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
                 Car Summary
               </span>
-              <div className="mt-3 rounded-lg overflow-hidden h-32 bg-gray-100 mb-3">
-                <img
-                  src="https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=600&q=80"
-                  alt="Toyota Camry 2020"
-                  className="w-full h-full object-cover"
-                />
+              <div className="mt-3 rounded-lg overflow-hidden h-32 bg-gray-100 mb-3 flex items-center justify-center text-[10px] text-gray-400">
+                {carData.make || carData.model ? (
+                  <img
+                    src="https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=600&q=80"
+                    alt={`${carData.make} ${carData.model} ${carData.year}`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  'Vehicle photo appears after details are saved'
+                )}
               </div>
-              <h4 className="font-bold text-sm text-gray-900">Toyota Camry 2020</h4>
-              <p className="text-xs text-gray-500 mt-0.5">45,000 miles • Condition: Good</p>
+              <h4 className="font-bold text-sm text-gray-900">
+                {carData.make && carData.model ? `${carData.make} ${carData.model} ${carData.year}`.trim() : 'Your vehicle details'}
+              </h4>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {carData.mileage ? `${Number(carData.mileage).toLocaleString()} miles • ` : ''}{conditionData.condition || ''}
+              </p>
 
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <span className="text-xs text-gray-600 block">Expected Offer Range:</span>
-                <div className="text-lg font-black text-[#0a502c] mt-0.5">
-                  ₦13,000,000 - ₦16,500,000
-                </div>
+                {estRange ? (
+                  <div className="text-lg font-black text-[#0a502c] mt-0.5">
+                    ₦{estRange.low.toLocaleString()} - ₦{estRange.high.toLocaleString()}
+                  </div>
+                ) : (
+                  <div className="text-sm font-semibold text-gray-400 mt-0.5">
+                    Enter vehicle details to see estimate
+                  </div>
+                )}
                 <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
                   Final offer will be confirmed after free on-site physical and diagnostic inspection.
                 </p>
