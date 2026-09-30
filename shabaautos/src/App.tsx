@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { fetchMySavedVehicles, fetchMyComparison } from './services/api';
 import { Car, ScreenId } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -25,12 +26,21 @@ export default function App() {
   const [previousScreen, setPreviousScreen] = useState<ScreenId>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const [savedCarIds, setSavedCarIds] = useState<string[]>([
-    'rav4-2022',
-    'camry-2022',
-    'comp-1',
-    'comp-2',
-  ]);
+  const [savedCarIds, setSavedCarIds] = useState<string[]>([]);
+  const [compareCount, setCompareCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    fetchMySavedVehicles().then((res) => {
+      if (!active || !res.success) return;
+      setSavedCarIds(Array.isArray(res.savedCarIds) ? res.savedCarIds : []);
+    });
+    fetchMyComparison().then((res) => {
+      if (!active || !res.success) return;
+      setCompareCount(Array.isArray(res.vehicles) ? res.vehicles.length : 0);
+    });
+    return () => { active = false; };
+  }, []);
 
   const handleToggleSaveCar = (carId: string) => {
     setSavedCarIds((prev) =>
@@ -74,7 +84,7 @@ export default function App() {
         currentScreen={currentScreen}
         onNavigate={handleNavigate}
         savedCount={savedCarIds.length}
-        compareCount={3}
+        compareCount={compareCount}
         mobileMenuOpen={mobileMenuOpen}
         onToggleMobileMenu={() => setMobileMenuOpen((prev) => !prev)}
         onCloseMobileMenu={() => setMobileMenuOpen(false)}
@@ -97,7 +107,7 @@ export default function App() {
             onSelectCar={handleSelectCar}
             savedCarIds={savedCarIds}
             onToggleSaveCar={handleToggleSaveCar}
-            compareCount={3}
+            compareCount={compareCount}
           />
         )}
 
@@ -167,7 +177,7 @@ export default function App() {
         currentScreen={currentScreen}
         onNavigate={handleNavigate}
         savedCount={savedCarIds.length}
-        compareCount={3}
+        compareCount={compareCount}
         isMenuOpen={mobileMenuOpen}
         onOpenMenu={() => setMobileMenuOpen(true)}
         menuButtonRef={menuButtonRef}
@@ -180,7 +190,7 @@ export default function App() {
         onNavigate={handleNavigate}
         currentScreen={currentScreen}
         savedCount={savedCarIds.length}
-        compareCount={3}
+        compareCount={compareCount}
         triggerRef={menuButtonRef}
       />
     </div>

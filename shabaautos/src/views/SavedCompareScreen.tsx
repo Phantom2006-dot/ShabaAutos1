@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import type { Car } from '../types';
 import {
   Heart,
   Scale,
@@ -20,15 +21,24 @@ import {
   ChevronRight,
   ShieldCheck,
 } from 'lucide-react';
-import { SAVED_COMPARE_CARS } from '../data/cars';
 import { ScreenId } from '../types';
+import { fetchMyComparison } from '../services/api';
 
 interface SavedCompareScreenProps {
   onNavigate: (screen: ScreenId) => void;
 }
 
 export const SavedCompareScreen: React.FC<SavedCompareScreenProps> = ({ onNavigate }) => {
-  const [cars, setCars] = useState(SAVED_COMPARE_CARS);
+  const [cars, setCars] = useState<Car[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetchMyComparison().then((res) => {
+      if (!active || !res.success) return;
+      setCars(Array.isArray(res.vehicles) ? res.vehicles.map((v) => ({ ...v, selected: true })) : []);
+    });
+    return () => { active = false; };
+  }, []);
   const [showAlert, setShowAlert] = useState(true);
   const [sidebarTab, setSidebarTab] = useState('saved');
 

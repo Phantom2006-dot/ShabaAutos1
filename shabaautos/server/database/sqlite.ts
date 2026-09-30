@@ -492,4 +492,102 @@ export function initializeDatabaseSchema(db: DatabaseSync): void {
       new Date().toISOString()
     );
   }
+
+  if (!applied.has('003_dynamic_platform_upgrade')) {
+    // Vehicle images: Cloudinary metadata + primary/ordering
+    try { db.exec(`ALTER TABLE vehicle_images ADD COLUMN public_id TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE vehicle_images ADD COLUMN asset_id TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE vehicle_images ADD COLUMN width INTEGER;`); } catch {}
+    try { db.exec(`ALTER TABLE vehicle_images ADD COLUMN height INTEGER;`); } catch {}
+    try { db.exec(`ALTER TABLE vehicle_images ADD COLUMN format TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE vehicle_images ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0;`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicle_images_public_id ON vehicle_images(public_id);`); } catch {}
+
+    // Order / request status history
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS order_status_history (
+        id TEXT PRIMARY KEY,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT NOT NULL,
+        note TEXT,
+        changed_by TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_order_status_history_resource ON order_status_history(resource_type, resource_id);
+      CREATE INDEX IF NOT EXISTS idx_order_status_history_created ON order_status_history(created_at);
+    `);
+
+    // Site settings (admin-configurable rates)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS site_settings (
+        id TEXT PRIMARY KEY,
+        setting_key TEXT NOT NULL,
+        setting_value TEXT NOT NULL,
+        value_type TEXT NOT NULL DEFAULT 'string',
+        label TEXT,
+        description TEXT,
+        effective_date TEXT NOT NULL,
+        jurisdiction TEXT DEFAULT 'NG',
+        source_ref TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        updated_by TEXT,
+        updated_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_site_settings_key_active ON site_settings(setting_key);
+    `);
+
+    // Activity / analytics events (first-party, real data only)
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS activity_events (
+        id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        user_id TEXT,
+        session_id TEXT,
+        entity_type TEXT,
+        entity_id TEXT,
+        path TEXT,
+        referrer TEXT,
+        search_query TEXT,
+        filters_json TEXT,
+        ip_hash TEXT,
+        user_agent TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_activity_events_type_created ON activity_events(event_type, created_at);
+      CREATE INDEX IF NOT EXISTS idx_activity_events_vehicle ON activity_events(entity_type, entity_id);
+      CREATE INDEX IF NOT EXISTS idx_activity_events_user ON activity_events(user_id, created_at);
+    `);
+
+    // Sell submissions: customer photos + admin review workflow
+    try { db.exec(`ALTER TABLE sell_submissions ADD COLUMN photo_urls_json TEXT NOT NULL DEFAULT '[]';`); } catch {}
+    try { db.exec(`ALTER TABLE sell_submissions ADD COLUMN review_status TEXT NOT NULL DEFAULT 'pending';`); } catch {}
+    try { db.exec(`ALTER TABLE sell_submissions ADD COLUMN reviewed_by TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE sell_submissions ADD COLUMN reviewed_at TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE sell_submissions ADD COLUMN admin_notes TEXT;`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sell_submissions_review ON sell_submissions(review_status, created_at);`); } catch {}
+
+    // Inspections: report fields
+    try { db.exec(`ALTER TABLE inspections ADD COLUMN inspector_name TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE inspections ADD COLUMN report_date TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE inspections ADD COLUMN report_published INTEGER NOT NULL DEFAULT 0;`); } catch {}
+
+    // Performance indexes
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicles_status ON vehicles(status);`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicles_fuel ON vehicles(fuel_type);`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_vehicles_transmission ON vehicles(transmission);`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_import_requests_status ON import_requests(status);`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_rental_bookings_user ON rental_bookings(user_id);`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_offers_status ON offers(status);`); } catch {}
+    try { db.exec(`CREATE INDEX IF NOT EXISTS idx_concierge_status ON concierge_requests(status);`); } catch {}
+    try { db.exec(`ALTER TABLE import_requests ADD COLUMN admin_notes TEXT;`); } catch {}
+    try { db.exec(`ALTER TABLE import_requests ADD COLUMN origin_country TEXT NOT NULL DEFAULT 'USA';`); } catch {}
+
+    db.prepare('INSERT INTO _migrations (name, applied_at) VALUES (?, ?)').run(
+      '003_dynamic_platform_upgrade',
+      new Date().toISOString()
+    );
+  }
 }

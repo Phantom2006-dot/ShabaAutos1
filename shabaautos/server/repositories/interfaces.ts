@@ -22,6 +22,9 @@ import {
   AuditLog,
   ExternalApiCacheRecord,
   AiUsageRecord,
+  OrderStatusHistory,
+  SiteSetting,
+  ActivityEvent,
 } from '../models/types';
 
 export interface VehicleFilterParams {
@@ -76,6 +79,18 @@ export interface IUserRepository {
   list(limit?: number, offset?: number): Promise<User[]>;
 }
 
+export interface VehicleImageInput {
+  url: string;
+  displayOrder: number;
+  isPrimary?: boolean;
+  publicId?: string;
+  assetId?: string;
+  width?: number;
+  height?: number;
+  format?: string;
+  caption?: string;
+}
+
 export interface IVehicleRepository {
   findById(id: string): Promise<Vehicle | null>;
   findByStockId(stockId: string): Promise<Vehicle | null>;
@@ -85,9 +100,32 @@ export interface IVehicleRepository {
   delete(id: string): Promise<boolean>;
   getImages(vehicleId: string): Promise<VehicleImage[]>;
   setImages(vehicleId: string, imageUrls: string[]): Promise<void>;
+  addImages(vehicleId: string, images: VehicleImageInput[]): Promise<VehicleImage[]>;
+  updateImage(imageId: string, updates: Partial<Pick<VehicleImage, 'isPrimary' | 'displayOrder' | 'caption'>>): Promise<VehicleImage | null>;
+  setPrimaryImage(vehicleId: string, imageId: string): Promise<void>;
+  deleteImage(imageId: string): Promise<VehicleImage | null>;
   getSeller(sellerId: string): Promise<DealershipSeller | null>;
   createSeller(seller: Omit<DealershipSeller, 'createdAt' | 'updatedAt'>): Promise<DealershipSeller>;
   getFacets(): Promise<VehicleFacets>;
+}
+
+export interface IStatusHistoryRepository {
+  record(entry: Omit<OrderStatusHistory, 'id' | 'createdAt'>): Promise<OrderStatusHistory>;
+  listFor(resourceType: string, resourceId: string): Promise<OrderStatusHistory[]>;
+  listRecent(limit?: number): Promise<OrderStatusHistory[]>;
+}
+
+export interface ISettingsRepository {
+  getAll(includeInactive?: boolean): Promise<SiteSetting[]>;
+  getKey(settingKey: string): Promise<SiteSetting | null>;
+  getNumber(settingKey: string, fallback: number): Promise<number>;
+  set(entry: { settingKey: string; settingValue: string; valueType: SiteSetting['valueType']; label?: string; description?: string; jurisdiction?: string; sourceRef?: string; updatedBy?: string }): Promise<SiteSetting>;
+}
+
+export interface IActivityRepository {
+  record(entry: Omit<ActivityEvent, 'id' | 'createdAt'>): Promise<ActivityEvent>;
+  listRecent(limit?: number): Promise<ActivityEvent[]>;
+  summarize(days?: number): Promise<any>;
 }
 
 export interface IOfferRepository {
@@ -120,6 +158,7 @@ export interface IRentalRepository {
     booking: Omit<RentalBooking, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<RentalBooking>;
   cancelBooking(id: string, reason?: string): Promise<boolean>;
+  updateBookingStatus(id: string, status: RentalBooking['status']): Promise<RentalBooking | null>;
 }
 
 export interface IImportRepository {
@@ -141,8 +180,10 @@ export interface IImportRepository {
 export interface ISellRepository {
   findById(id: string): Promise<SellSubmission | null>;
   list(userId?: string): Promise<SellSubmission[]>;
+  listAll(limit?: number, offset?: number): Promise<SellSubmission[]>;
   create(submission: Omit<SellSubmission, 'id' | 'createdAt' | 'updatedAt'>): Promise<SellSubmission>;
   updateStatus(id: string, status: SellSubmission['status'], inspectorNotes?: string): Promise<SellSubmission | null>;
+  updateReview(id: string, review: { reviewStatus: 'pending' | 'approved' | 'rejected' | 'needs_info'; reviewedBy?: string; adminNotes?: string; status?: SellSubmission['status'] }): Promise<SellSubmission | null>;
   recordValuationHistory(valuation: Omit<ValuationHistory, 'id' | 'createdAt'>): Promise<ValuationHistory>;
   getValuationHistory(sellSubmissionId: string): Promise<ValuationHistory[]>;
 }
@@ -201,5 +242,8 @@ export interface IDatabaseService {
   cache: ICacheRepository;
   aiUsage: IAiUsageRepository;
   notifications: INotificationRepository;
+  statusHistory: IStatusHistoryRepository;
+  settings: ISettingsRepository;
+  activity: IActivityRepository;
   transaction<T>(work: (tx: any) => Promise<T>): Promise<T>;
 }

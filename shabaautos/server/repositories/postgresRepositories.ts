@@ -22,11 +22,18 @@ import {
   AuditLog,
   ExternalApiCacheRecord,
   AiUsageRecord,
+  OrderStatusHistory,
+  SiteSetting,
+  ActivityEvent,
 } from '../models/types';
 import {
   IDatabaseService,
   IUserRepository,
   IVehicleRepository,
+  VehicleImageInput,
+  IStatusHistoryRepository,
+  ISettingsRepository,
+  IActivityRepository,
   IOfferRepository,
   IInspectionRepository,
   IRentalRepository,
@@ -526,14 +533,24 @@ export class PostgresVehicleRepository implements IVehicleRepository {
       'SELECT * FROM vehicle_images WHERE vehicle_id = $1 ORDER BY display_order ASC, created_at ASC',
       [vehicleId]
     );
-    return res.rows.map((r) => ({
+    return res.rows.map((r) => this.mapImage(r));
+  }
+
+  private mapImage(r: any): VehicleImage {
+    return {
       id: r.id,
       vehicleId: r.vehicle_id,
       url: r.url,
-      displayOrder: Number(r.display_order),
+      displayOrder: Number(r.display_order ?? 0),
       caption: r.caption || undefined,
+      isPrimary: Boolean(r.is_primary),
+      publicId: r.public_id || undefined,
+      assetId: r.asset_id || undefined,
+      width: r.width !== null && r.width !== undefined ? Number(r.width) : undefined,
+      height: r.height !== null && r.height !== undefined ? Number(r.height) : undefined,
+      format: r.format || undefined,
       createdAt: toIso(r.created_at),
-    }));
+    };
   }
 
   async setImages(vehicleId: string, imageUrls: string[]): Promise<void> {
@@ -541,10 +558,69 @@ export class PostgresVehicleRepository implements IVehicleRepository {
     for (let i = 0; i < imageUrls.length; i++) {
       const imgId = `img_${crypto.randomUUID()}`;
       await this.pool.query(
-        'INSERT INTO vehicle_images (id, vehicle_id, url, display_order, created_at) VALUES ($1, $2, $3, $4, $5)',
-        [imgId, vehicleId, imageUrls[i], i, new Date().toISOString()]
+        'INSERT INTO vehicle_images (id, vehicle_id, url, display_order, is_primary, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+        [imgId, vehicleId, imageUrls[i], i, i === 0, new Date().toISOString()]
       );
     }
+  }
+
+  async addImages(vehicleId: string, images: VehicleImageInput[]): Promise<VehicleImage[]> {
+    const created: VehicleImage[] = [];
+    for (const img of images) {
+      const imgId = `img_${crypto.randomUUID()}`;
+      const q = `INSERT INTO vehicle_images
+        (id, vehicle_id, url, display_order, is_primary, public_id, asset_id, width, height, format, caption, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`;
+      const res = await this.pool.query(q, [
+        imgId,
+        vehicleId,
+        img.url,
+        img.displayOrder ?? 0,
+        img.isPrimary ?? false,
+        img.publicId || null,
+        img.assetId || null,
+        img.width ?? null,
+        img.height ?? null,
+        img.format || null,
+        img.caption || null,
+        new Date().toISOString(),
+      ]);
+      created.push(this.mapImage(res.rows[0]));
+      if (img.isPrimary) {
+        await this.pool.query('UPDATE vehicle_images SET is_primary = false WHERE vehicle_id = $1 AND id <> $2', [vehicleId, imgId]);
+      }
+    }
+    return created;
+  }
+
+  async updateImage(imageId: string, updates: Partial<Pick<VehicleImage, 'isPrimary' | 'displayOrder' | 'caption'>>): Promise<VehicleImage | null> {
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (updates.isPrimary !== undefined) { params.push(Boolean(updates.isPrimary)); sets.push(`is_primary = $${params.length}`); }
+    if (updates.displayOrder !== undefined) { params.push(Math.max(0, Number(updates.displayOrder))); sets.push(`display_order = $${params.length}`); }
+    if (updates.caption !== undefined) { params.push(updates.caption || null); sets.push(`caption = $${params.length}`); }
+    if (sets.length === 0) return this.getImageById(imageId);
+    params.push(imageId);
+    const res = await this.pool.query(
+      `UPDATE vehicle_images SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
+    );
+    return res.rows[0] ? this.mapImage(res.rows[0]) : null;
+  }
+
+  async setPrimaryImage(vehicleId: string, imageId: string): Promise<void> {
+    await this.pool.query('UPDATE vehicle_images SET is_primary = false WHERE vehicle_id = $1', [vehicleId]);
+    await this.pool.query('UPDATE vehicle_images SET is_primary = true WHERE id = $1 AND vehicle_id = $2', [imageId, vehicleId]);
+  }
+
+  async deleteImage(imageId: string): Promise<VehicleImage | null> {
+    const res = await this.pool.query('DELETE FROM vehicle_images WHERE id = $1 RETURNING *', [imageId]);
+    return res.rows[0] ? this.mapImage(res.rows[0]) : null;
+  }
+
+  private async getImageById(imageId: string): Promise<VehicleImage | null> {
+    const res = await this.pool.query('SELECT * FROM vehicle_images WHERE id = $1', [imageId]);
+    return res.rows[0] ? this.mapImage(res.rows[0]) : null;
   }
 
   async getSeller(sellerId: string): Promise<DealershipSeller | null> {
@@ -1049,6 +1125,18 @@ export class PostgresRentalRepository implements IRentalRepository {
       client.release();
     }
   }
+
+  async updateBookingStatus(id: string, status: RentalBooking['status']): Promise<RentalBooking | null> {
+    const now = new Date().toISOString();
+    const res = await this.pool.query(
+      'UPDATE rental_bookings SET status = $1, updated_at = $2 WHERE id = $3 RETURNING *',
+      [status, now, id]
+    );
+    if (status === 'Cancelled') {
+      await this.pool.query('DELETE FROM rental_availability_blocks WHERE rental_booking_id = $1', [id]).catch(() => undefined);
+    }
+    return res.rows[0] ? this.mapBooking(res.rows[0]) : null;
+  }
 }
 
 // -------------------------------------------------------------
@@ -1449,6 +1537,11 @@ export class PostgresSellRepository implements ISellRepository {
       estimatedValueNgn: Number(r.estimated_value_ngn),
       status: r.status,
       inspectorNotes: r.inspector_notes || undefined,
+      photoUrls: Array.isArray(r.photo_urls_json) ? r.photo_urls_json : [],
+      reviewStatus: r.review_status || 'pending',
+      reviewedBy: r.reviewed_by || undefined,
+      reviewedAt: r.reviewed_at ? toIso(r.reviewed_at) : undefined,
+      adminNotes: r.admin_notes || undefined,
       createdAt: toIso(r.created_at),
       updatedAt: toIso(r.updated_at),
     };
@@ -1474,8 +1567,8 @@ export class PostgresSellRepository implements ISellRepository {
       INSERT INTO sell_submissions (
         id, user_id, seller_name, phone, email, make, model, year, trim,
         mileage, condition, issues, location, asking_price_ngn, estimated_value_ngn,
-        status, inspector_notes, created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        status, inspector_notes, photo_urls_json, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *
     `;
     const res = await this.pool.query(q, [
@@ -1496,10 +1589,19 @@ export class PostgresSellRepository implements ISellRepository {
       submission.estimatedValueNgn,
       submission.status,
       submission.inspectorNotes || null,
+      JSON.stringify(submission.photoUrls || []),
       now,
       now,
     ]);
     return this.mapSell(res.rows[0]);
+  }
+
+  async listAll(limit = 100, offset = 0): Promise<SellSubmission[]> {
+    const res = await this.pool.query(
+      'SELECT * FROM sell_submissions ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+      [limit, offset]
+    );
+    return res.rows.map((r) => this.mapSell(r));
   }
 
   async updateStatus(
@@ -1515,6 +1617,33 @@ export class PostgresSellRepository implements ISellRepository {
       RETURNING *
     `;
     const res = await this.pool.query(q, [status, inspectorNotes || null, now, id]);
+    return res.rows[0] ? this.mapSell(res.rows[0]) : null;
+  }
+
+  async updateReview(
+    id: string,
+    review: { reviewStatus: 'pending' | 'approved' | 'rejected' | 'needs_info'; reviewedBy?: string; adminNotes?: string; status?: SellSubmission['status'] }
+  ): Promise<SellSubmission | null> {
+    const now = new Date().toISOString();
+    const q = `
+      UPDATE sell_submissions
+      SET review_status = $1,
+          reviewed_by = $2,
+          reviewed_at = $3,
+          admin_notes = COALESCE($4, admin_notes),
+          status = COALESCE($5, status),
+          updated_at = $3
+      WHERE id = $6
+      RETURNING *
+    `;
+    const res = await this.pool.query(q, [
+      review.reviewStatus,
+      review.reviewedBy || null,
+      now,
+      review.adminNotes || null,
+      review.status || null,
+      id,
+    ]);
     return res.rows[0] ? this.mapSell(res.rows[0]) : null;
   }
 
@@ -2043,6 +2172,273 @@ export class PostgresNotificationRepository implements INotificationRepository {
 }
 
 // -------------------------------------------------------------
+// Order / Request Status History (Neon Postgres)
+// -------------------------------------------------------------
+export class PostgresStatusHistoryRepository implements IStatusHistoryRepository {
+  constructor(private pool: pg.Pool) {}
+
+  async record(entry: Omit<OrderStatusHistory, 'id' | 'createdAt'>): Promise<OrderStatusHistory> {
+    const id = `hist_${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const q = `
+      INSERT INTO order_status_history (id, resource_type, resource_id, from_status, to_status, note, changed_by, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *
+    `;
+    const res = await this.pool.query(q, [
+      id,
+      entry.resourceType,
+      entry.resourceId,
+      entry.fromStatus || null,
+      entry.toStatus,
+      entry.note || null,
+      entry.changedBy || null,
+      now,
+    ]);
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      resourceType: r.resource_type,
+      resourceId: r.resource_id,
+      fromStatus: r.from_status || undefined,
+      toStatus: r.to_status,
+      note: r.note || undefined,
+      changedBy: r.changed_by || undefined,
+      createdAt: toIso(r.created_at),
+    };
+  }
+
+  async listFor(resourceType: string, resourceId: string): Promise<OrderStatusHistory[]> {
+    const res = await this.pool.query(
+      'SELECT * FROM order_status_history WHERE resource_type = $1 AND resource_id = $2 ORDER BY created_at ASC',
+      [resourceType, resourceId]
+    );
+    return res.rows.map((r) => ({
+      id: r.id,
+      resourceType: r.resource_type,
+      resourceId: r.resource_id,
+      fromStatus: r.from_status || undefined,
+      toStatus: r.to_status,
+      note: r.note || undefined,
+      changedBy: r.changed_by || undefined,
+      createdAt: toIso(r.created_at),
+    }));
+  }
+
+  async listRecent(limit = 100): Promise<OrderStatusHistory[]> {
+    const res = await this.pool.query('SELECT * FROM order_status_history ORDER BY created_at DESC LIMIT $1', [limit]);
+    return res.rows.map((r) => ({
+      id: r.id,
+      resourceType: r.resource_type,
+      resourceId: r.resource_id,
+      fromStatus: r.from_status || undefined,
+      toStatus: r.to_status,
+      note: r.note || undefined,
+      changedBy: r.changed_by || undefined,
+      createdAt: toIso(r.created_at),
+    }));
+  }
+}
+
+// -------------------------------------------------------------
+// Site Settings / Configurable Rates (Neon Postgres)
+// -------------------------------------------------------------
+export class PostgresSettingsRepository implements ISettingsRepository {
+  constructor(private pool: pg.Pool) {}
+
+  private map(r: any): SiteSetting {
+    return {
+      id: r.id,
+      settingKey: r.setting_key,
+      settingValue: r.setting_value,
+      valueType: r.value_type,
+      label: r.label || undefined,
+      description: r.description || undefined,
+      effectiveDate: toIso(r.effective_date),
+      jurisdiction: r.jurisdiction || undefined,
+      sourceRef: r.source_ref || undefined,
+      isActive: Boolean(r.is_active),
+      updatedBy: r.updated_by || undefined,
+      updatedAt: toIso(r.updated_at),
+      createdAt: toIso(r.created_at),
+    };
+  }
+
+  async getAll(includeInactive = false): Promise<SiteSetting[]> {
+    const q = includeInactive
+      ? 'SELECT * FROM site_settings ORDER BY setting_key'
+      : 'SELECT * FROM site_settings WHERE is_active = true ORDER BY setting_key';
+    const res = await this.pool.query(q);
+    return res.rows.map((r) => this.map(r));
+  }
+
+  async getKey(settingKey: string): Promise<SiteSetting | null> {
+    const res = await this.pool.query(
+      'SELECT * FROM site_settings WHERE setting_key = $1 AND is_active = true LIMIT 1',
+      [settingKey]
+    );
+    return res.rows[0] ? this.map(res.rows[0]) : null;
+  }
+
+  async getNumber(settingKey: string, fallback: number): Promise<number> {
+    const setting = await this.getKey(settingKey);
+    if (!setting) return fallback;
+    const value = Number(setting.settingValue);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  async set(entry: {
+    settingKey: string;
+    settingValue: string;
+    valueType: SiteSetting['valueType'];
+    label?: string;
+    description?: string;
+    jurisdiction?: string;
+    sourceRef?: string;
+    updatedBy?: string;
+  }): Promise<SiteSetting> {
+    const existing = await this.pool.query(
+      'SELECT * FROM site_settings WHERE setting_key = $1 AND is_active = true LIMIT 1',
+      [entry.settingKey]
+    );
+    const now = new Date().toISOString();
+    if (existing.rows[0]) {
+      const res = await this.pool.query(
+        `UPDATE site_settings SET setting_value = $1, value_type = $2, label = COALESCE($3, label),
+         description = COALESCE($4, description), jurisdiction = COALESCE($5, jurisdiction),
+         source_ref = COALESCE($6, source_ref), updated_by = $7, updated_at = $8
+         WHERE id = $9 RETURNING *`,
+        [
+          entry.settingValue,
+          entry.valueType,
+          entry.label || null,
+          entry.description || null,
+          entry.jurisdiction || null,
+          entry.sourceRef || null,
+          entry.updatedBy || null,
+          now,
+          existing.rows[0].id,
+        ]
+      );
+      return this.map(res.rows[0]);
+    }
+    const id = `set_${crypto.randomUUID()}`;
+    const res = await this.pool.query(
+      `INSERT INTO site_settings (id, setting_key, setting_value, value_type, label, description, effective_date, jurisdiction, source_ref, updated_by, updated_at, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [
+        id,
+        entry.settingKey,
+        entry.settingValue,
+        entry.valueType,
+        entry.label || null,
+        entry.description || null,
+        now,
+        entry.jurisdiction || 'NG',
+        entry.sourceRef || null,
+        entry.updatedBy || null,
+        now,
+        now,
+      ]
+    );
+    return this.map(res.rows[0]);
+  }
+}
+
+// -------------------------------------------------------------
+// Activity / Analytics Events (Neon Postgres)
+// -------------------------------------------------------------
+export class PostgresActivityRepository implements IActivityRepository {
+  constructor(private pool: pg.Pool) {}
+
+  async record(entry: Omit<ActivityEvent, 'id' | 'createdAt'>): Promise<ActivityEvent> {
+    const id = `evt_${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const q = `
+      INSERT INTO activity_events (id, event_type, user_id, session_id, entity_type, entity_id, path, referrer, search_query, filters_json, ip_hash, user_agent, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *
+    `;
+    const res = await this.pool.query(q, [
+      id,
+      entry.eventType,
+      entry.userId || null,
+      entry.sessionId || null,
+      entry.entityType || null,
+      entry.entityId || null,
+      entry.path || null,
+      entry.referrer || null,
+      entry.searchQuery || null,
+      entry.filtersJson || null,
+      entry.ipHash || null,
+      entry.userAgent || null,
+      now,
+    ]);
+    const r = res.rows[0];
+    return {
+      id: r.id,
+      eventType: r.event_type,
+      userId: r.user_id || undefined,
+      sessionId: r.session_id || undefined,
+      entityType: r.entity_type || undefined,
+      entityId: r.entity_id || undefined,
+      path: r.path || undefined,
+      referrer: r.referrer || undefined,
+      searchQuery: r.search_query || undefined,
+      filtersJson: r.filters_json || undefined,
+      ipHash: r.ip_hash || undefined,
+      userAgent: r.user_agent || undefined,
+      createdAt: toIso(r.created_at),
+    };
+  }
+
+  async listRecent(limit = 200): Promise<ActivityEvent[]> {
+    const res = await this.pool.query('SELECT * FROM activity_events ORDER BY created_at DESC LIMIT $1', [limit]);
+    return res.rows.map((r) => ({
+      id: r.id,
+      eventType: r.event_type,
+      userId: r.user_id || undefined,
+      sessionId: r.session_id || undefined,
+      entityType: r.entity_type || undefined,
+      entityId: r.entity_id || undefined,
+      path: r.path || undefined,
+      referrer: r.referrer || undefined,
+      searchQuery: r.search_query || undefined,
+      filtersJson: r.filters_json || undefined,
+      ipHash: r.ip_hash || undefined,
+      userAgent: r.user_agent || undefined,
+      createdAt: toIso(r.created_at),
+    }));
+  }
+
+  async summarize(days = 30): Promise<any> {
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    const totals = await this.pool.query(
+      `SELECT event_type, COUNT(*)::int AS count FROM activity_events WHERE created_at >= $1 GROUP BY event_type ORDER BY count DESC`,
+      [since]
+    );
+    const pageViews = await this.pool.query(
+      `SELECT path, COUNT(*)::int AS views FROM activity_events WHERE created_at >= $1 AND event_type = 'page_view' GROUP BY path ORDER BY views DESC LIMIT 20`,
+      [since]
+    );
+    const vehicleViews = await this.pool.query(
+      `SELECT entity_id, COUNT(*)::int AS views FROM activity_events WHERE created_at >= $1 AND event_type = 'vehicle_view' GROUP BY entity_id ORDER BY views DESC LIMIT 20`,
+      [since]
+    );
+    const byDay = await this.pool.query(
+      `SELECT DATE(created_at) AS day, COUNT(*)::int AS events FROM activity_events WHERE created_at >= $1 GROUP BY DATE(created_at) ORDER BY day`,
+      [since]
+    );
+    return {
+      since,
+      eventTotals: totals.rows,
+      totalEvents: totals.rows.reduce((sum: number, row: any) => sum + row.count, 0),
+      topPages: pageViews.rows,
+      topVehicles: vehicleViews.rows,
+      daily: byDay.rows,
+    };
+  }
+}
+
+// -------------------------------------------------------------
 // Database Service Facade for Neon Postgres
 // -------------------------------------------------------------
 export class PostgresDatabaseService implements IDatabaseService {
@@ -2059,6 +2455,9 @@ export class PostgresDatabaseService implements IDatabaseService {
   public cache: ICacheRepository;
   public aiUsage: IAiUsageRepository;
   public notifications: INotificationRepository;
+  public statusHistory: IStatusHistoryRepository;
+  public settings: ISettingsRepository;
+  public activity: IActivityRepository;
 
   constructor(private pool: pg.Pool) {
     this.users = new PostgresUserRepository(pool);
@@ -2074,6 +2473,9 @@ export class PostgresDatabaseService implements IDatabaseService {
     this.cache = new PostgresCacheRepository(pool);
     this.aiUsage = new PostgresAiUsageRepository(pool);
     this.notifications = new PostgresNotificationRepository(pool);
+    this.statusHistory = new PostgresStatusHistoryRepository(pool);
+    this.settings = new PostgresSettingsRepository(pool);
+    this.activity = new PostgresActivityRepository(pool);
   }
 
   async initialize(): Promise<void> {

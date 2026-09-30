@@ -22,11 +22,18 @@ import {
   AuditLog,
   ExternalApiCacheRecord,
   AiUsageRecord,
+  OrderStatusHistory,
+  SiteSetting,
+  ActivityEvent,
 } from '../models/types';
 import {
   IDatabaseService,
   IUserRepository,
   IVehicleRepository,
+  VehicleImageInput,
+  IStatusHistoryRepository,
+  ISettingsRepository,
+  IActivityRepository,
   IOfferRepository,
   IInspectionRepository,
   IRentalRepository,
@@ -497,25 +504,95 @@ export class SqliteVehicleRepository implements IVehicleRepository {
 
   async getImages(vehicleId: string): Promise<VehicleImage[]> {
     const rows = this.db.prepare('SELECT * FROM vehicle_images WHERE vehicle_id = ? ORDER BY display_order ASC').all(vehicleId) as any[];
-    return rows.map((r) => ({
+    return rows.map((r) => this.mapImage(r));
+  }
+
+  private mapImage(r: any): VehicleImage {
+    return {
       id: r.id,
       vehicleId: r.vehicle_id,
       url: r.url,
-      displayOrder: r.display_order,
+      displayOrder: Number(r.display_order ?? 0),
       caption: r.caption || undefined,
+      isPrimary: Boolean(r.is_primary),
+      publicId: r.public_id || undefined,
+      assetId: r.asset_id || undefined,
+      width: r.width !== null && r.width !== undefined ? Number(r.width) : undefined,
+      height: r.height !== null && r.height !== undefined ? Number(r.height) : undefined,
+      format: r.format || undefined,
       createdAt: r.created_at,
-    }));
+    };
   }
 
   async setImages(vehicleId: string, imageUrls: string[]): Promise<void> {
     this.db.prepare('DELETE FROM vehicle_images WHERE vehicle_id = ?').run(vehicleId);
     const insertStmt = this.db.prepare(
-      'INSERT INTO vehicle_images (id, vehicle_id, url, display_order, created_at) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO vehicle_images (id, vehicle_id, url, display_order, is_primary, created_at) VALUES (?, ?, ?, ?, ?, ?)'
     );
     const now = new Date().toISOString();
     imageUrls.forEach((url, idx) => {
-      insertStmt.run(`img_${crypto.randomUUID()}`, vehicleId, url, idx, now);
+      insertStmt.run(`img_${crypto.randomUUID()}`, vehicleId, url, idx, idx === 0 ? 1 : 0, now);
     });
+  }
+
+  async addImages(vehicleId: string, images: VehicleImageInput[]): Promise<VehicleImage[]> {
+    const created: VehicleImage[] = [];
+    const insertStmt = this.db.prepare(
+      `INSERT INTO vehicle_images (id, vehicle_id, url, display_order, is_primary, public_id, asset_id, width, height, format, caption, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    const now = new Date().toISOString();
+    for (const img of images) {
+      const imgId = `img_${crypto.randomUUID()}`;
+      insertStmt.run(
+        imgId,
+        vehicleId,
+        img.url,
+        img.displayOrder ?? 0,
+        img.isPrimary ? 1 : 0,
+        img.publicId || null,
+        img.assetId || null,
+        img.width ?? null,
+        img.height ?? null,
+        img.format || null,
+        img.caption || null,
+        now
+      );
+      created.push(this.mapImage(this.db.prepare('SELECT * FROM vehicle_images WHERE id = ?').get(imgId)));
+      if (img.isPrimary) {
+        this.db.prepare('UPDATE vehicle_images SET is_primary = 0 WHERE vehicle_id = ? AND id <> ?').run(vehicleId, imgId);
+      }
+    }
+    return created;
+  }
+
+  async updateImage(imageId: string, updates: Partial<Pick<VehicleImage, 'isPrimary' | 'displayOrder' | 'caption'>>): Promise<VehicleImage | null> {
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (updates.isPrimary !== undefined) { params.push(updates.isPrimary ? 1 : 0); sets.push('is_primary = ?'); }
+    if (updates.displayOrder !== undefined) { params.push(Math.max(0, Number(updates.displayOrder))); sets.push('display_order = ?'); }
+    if (updates.caption !== undefined) { params.push(updates.caption || null); sets.push('caption = ?'); }
+    if (sets.length === 0) return this.getImageById(imageId);
+    params.push(imageId);
+    this.db.prepare(`UPDATE vehicle_images SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    return this.getImageById(imageId);
+  }
+
+  async setPrimaryImage(vehicleId: string, imageId: string): Promise<void> {
+    this.db.prepare('UPDATE vehicle_images SET is_primary = 0 WHERE vehicle_id = ?').run(vehicleId);
+    this.db.prepare('UPDATE vehicle_images SET is_primary = 1 WHERE id = ? AND vehicle_id = ?').run(imageId, vehicleId);
+  }
+
+  async deleteImage(imageId: string): Promise<VehicleImage | null> {
+    const row = this.db.prepare('SELECT * FROM vehicle_images WHERE id = ?').get(imageId) as any;
+    if (!row) return null;
+    this.db.prepare('DELETE FROM vehicle_images WHERE id = ?').run(imageId);
+    return this.mapImage(row);
+  }
+
+  private getImageById(imageId: string): VehicleImage | null {
+    const row = this.db.prepare('SELECT * FROM vehicle_images WHERE id = ?').get(imageId) as any;
+    return row ? this.mapImage(row) : null;
   }
 
   async getSeller(sellerId: string): Promise<DealershipSeller | null> {
@@ -969,6 +1046,17 @@ export class SqliteRentalRepository implements IRentalRepository {
     }
   }
 
+  async updateBookingStatus(id: string, status: RentalBooking['status']): Promise<RentalBooking | null> {
+    this.db
+      .prepare('UPDATE rental_bookings SET status = ?, updated_at = ? WHERE id = ?')
+      .run(status, new Date().toISOString(), id);
+    if (status === 'Cancelled') {
+      this.db.prepare('DELETE FROM rental_availability_blocks WHERE rental_booking_id = ?').run(id);
+    }
+    const row = this.db.prepare('SELECT * FROM rental_bookings WHERE id = ?').get(id) as any;
+    return row ? this.mapBooking(row) : null;
+  }
+
   private mapRentalVehicle(row: any): RentalVehicle {
     return {
       id: row.id,
@@ -1378,8 +1466,8 @@ export class SqliteSellRepository implements ISellRepository {
         `INSERT INTO sell_submissions (
           id, user_id, seller_name, phone, email, make, model, year, trim,
           mileage, condition, issues, location, asking_price_ngn, estimated_value_ngn,
-          status, inspector_notes, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          status, inspector_notes, photo_urls_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         newSell.id,
@@ -1399,10 +1487,16 @@ export class SqliteSellRepository implements ISellRepository {
         newSell.estimatedValueNgn,
         newSell.status,
         newSell.inspectorNotes || null,
+        JSON.stringify(newSell.photoUrls || []),
         newSell.createdAt,
         newSell.updatedAt
       );
     return newSell;
+  }
+
+  async listAll(limit = 100, offset = 0): Promise<SellSubmission[]> {
+    const rows = this.db.prepare('SELECT * FROM sell_submissions ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset) as any[];
+    return rows.map((r) => this.mapSell(r));
   }
 
   async updateStatus(id: string, status: SellSubmission['status'], inspectorNotes?: string): Promise<SellSubmission | null> {
@@ -1410,6 +1504,25 @@ export class SqliteSellRepository implements ISellRepository {
     this.db
       .prepare('UPDATE sell_submissions SET status = ?, inspector_notes = COALESCE(?, inspector_notes), updated_at = ? WHERE id = ?')
       .run(status, inspectorNotes || null, now, id);
+    return this.findById(id);
+  }
+
+  async updateReview(id: string, review: { reviewStatus: 'pending' | 'approved' | 'rejected' | 'needs_info'; reviewedBy?: string; adminNotes?: string; status?: SellSubmission['status'] }): Promise<SellSubmission | null> {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `UPDATE sell_submissions SET review_status = ?, reviewed_by = ?, reviewed_at = ?,
+         admin_notes = COALESCE(?, admin_notes), status = COALESCE(?, status), updated_at = ? WHERE id = ?`
+      )
+      .run(
+        review.reviewStatus,
+        review.reviewedBy || null,
+        now,
+        review.adminNotes || null,
+        review.status || null,
+        now,
+        id
+      );
     return this.findById(id);
   }
 
@@ -1486,6 +1599,11 @@ export class SqliteSellRepository implements ISellRepository {
       estimatedValueNgn: Number(row.estimated_value_ngn),
       status: row.status,
       inspectorNotes: row.inspector_notes || undefined,
+      photoUrls: (() => { try { const v = JSON.parse(row.photo_urls_json || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } })(),
+      reviewStatus: row.review_status || 'pending',
+      reviewedBy: row.reviewed_by || undefined,
+      reviewedAt: row.reviewed_at || undefined,
+      adminNotes: row.admin_notes || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -1888,6 +2006,226 @@ export class SqliteNotificationRepository implements INotificationRepository {
   }
 }
 
+export class SqliteStatusHistoryRepository implements IStatusHistoryRepository {
+  constructor(private db: DatabaseSync) {}
+
+  async record(entry: Omit<OrderStatusHistory, 'id' | 'createdAt'>): Promise<OrderStatusHistory> {
+    const id = `hist_${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const record: OrderStatusHistory = { id, ...entry, createdAt: now };
+    this.db
+      .prepare(
+        `INSERT INTO order_status_history (id, resource_type, resource_id, from_status, to_status, note, changed_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        record.id,
+        record.resourceType,
+        record.resourceId,
+        record.fromStatus || null,
+        record.toStatus,
+        record.note || null,
+        record.changedBy || null,
+        record.createdAt
+      );
+    return record;
+  }
+
+  async listFor(resourceType: string, resourceId: string): Promise<OrderStatusHistory[]> {
+    const rows = this.db.prepare('SELECT * FROM order_status_history WHERE resource_type = ? AND resource_id = ? ORDER BY created_at ASC').all(resourceType, resourceId) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      resourceType: r.resource_type,
+      resourceId: r.resource_id,
+      fromStatus: r.from_status || undefined,
+      toStatus: r.to_status,
+      note: r.note || undefined,
+      changedBy: r.changed_by || undefined,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async listRecent(limit = 100): Promise<OrderStatusHistory[]> {
+    const rows = this.db.prepare('SELECT * FROM order_status_history ORDER BY created_at DESC LIMIT ?').all(limit) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      resourceType: r.resource_type,
+      resourceId: r.resource_id,
+      fromStatus: r.from_status || undefined,
+      toStatus: r.to_status,
+      note: r.note || undefined,
+      changedBy: r.changed_by || undefined,
+      createdAt: r.created_at,
+    }));
+  }
+}
+
+export class SqliteSettingsRepository implements ISettingsRepository {
+  constructor(private db: DatabaseSync) {}
+
+  private map(r: any): SiteSetting {
+    return {
+      id: r.id,
+      settingKey: r.setting_key,
+      settingValue: r.setting_value,
+      valueType: r.value_type,
+      label: r.label || undefined,
+      description: r.description || undefined,
+      effectiveDate: r.effective_date,
+      jurisdiction: r.jurisdiction || undefined,
+      sourceRef: r.source_ref || undefined,
+      isActive: Boolean(r.is_active),
+      updatedBy: r.updated_by || undefined,
+      updatedAt: r.updated_at,
+      createdAt: r.created_at,
+    };
+  }
+
+  async getAll(includeInactive = false): Promise<SiteSetting[]> {
+    const rows = includeInactive
+      ? (this.db.prepare('SELECT * FROM site_settings ORDER BY setting_key').all() as any[])
+      : (this.db.prepare('SELECT * FROM site_settings WHERE is_active = 1 ORDER BY setting_key').all() as any[]);
+    return rows.map((r) => this.map(r));
+  }
+
+  async getKey(settingKey: string): Promise<SiteSetting | null> {
+    const row = this.db.prepare('SELECT * FROM site_settings WHERE setting_key = ? AND is_active = 1 LIMIT 1').get(settingKey) as any;
+    return row ? this.map(row) : null;
+  }
+
+  async getNumber(settingKey: string, fallback: number): Promise<number> {
+    const setting = await this.getKey(settingKey);
+    if (!setting) return fallback;
+    const value = Number(setting.settingValue);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  async set(entry: {
+    settingKey: string;
+    settingValue: string;
+    valueType: SiteSetting['valueType'];
+    label?: string;
+    description?: string;
+    jurisdiction?: string;
+    sourceRef?: string;
+    updatedBy?: string;
+  }): Promise<SiteSetting> {
+    const existing = this.db.prepare('SELECT * FROM site_settings WHERE setting_key = ? AND is_active = 1 LIMIT 1').get(entry.settingKey) as any;
+    const now = new Date().toISOString();
+    if (existing) {
+      this.db.prepare(
+        `UPDATE site_settings SET setting_value = ?, value_type = ?, label = COALESCE(?, label),
+         description = COALESCE(?, description), jurisdiction = COALESCE(?, jurisdiction),
+         source_ref = COALESCE(?, source_ref), updated_by = ?, updated_at = ? WHERE id = ?`
+      ).run(
+        entry.settingValue,
+        entry.valueType,
+        entry.label || null,
+        entry.description || null,
+        entry.jurisdiction || null,
+        entry.sourceRef || null,
+        entry.updatedBy || null,
+        now,
+        existing.id
+      );
+      return this.map(this.db.prepare('SELECT * FROM site_settings WHERE id = ?').get(existing.id));
+    }
+    const id = `set_${crypto.randomUUID()}`;
+    this.db.prepare(
+      `INSERT INTO site_settings (id, setting_key, setting_value, value_type, label, description, effective_date, jurisdiction, source_ref, updated_by, updated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      id,
+      entry.settingKey,
+      entry.settingValue,
+      entry.valueType,
+      entry.label || null,
+      entry.description || null,
+      now,
+      entry.jurisdiction || 'NG',
+      entry.sourceRef || null,
+      entry.updatedBy || null,
+      now,
+      now
+    );
+    return this.map(this.db.prepare('SELECT * FROM site_settings WHERE id = ?').get(id));
+  }
+}
+
+export class SqliteActivityRepository implements IActivityRepository {
+  constructor(private db: DatabaseSync) {}
+
+  async record(entry: Omit<ActivityEvent, 'id' | 'createdAt'>): Promise<ActivityEvent> {
+    const id = `evt_${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const record: ActivityEvent = { id, ...entry, createdAt: now };
+    this.db
+      .prepare(
+        `INSERT INTO activity_events (id, event_type, user_id, session_id, entity_type, entity_id, path, referrer, search_query, filters_json, ip_hash, user_agent, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        record.id,
+        record.eventType,
+        record.userId || null,
+        record.sessionId || null,
+        record.entityType || null,
+        record.entityId || null,
+        record.path || null,
+        record.referrer || null,
+        record.searchQuery || null,
+        record.filtersJson || null,
+        record.ipHash || null,
+        record.userAgent || null,
+        record.createdAt
+      );
+    return record;
+  }
+
+  async listRecent(limit = 200): Promise<ActivityEvent[]> {
+    const rows = this.db.prepare('SELECT * FROM activity_events ORDER BY created_at DESC LIMIT ?').all(limit) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      eventType: r.event_type,
+      userId: r.user_id || undefined,
+      sessionId: r.session_id || undefined,
+      entityType: r.entity_type || undefined,
+      entityId: r.entity_id || undefined,
+      path: r.path || undefined,
+      referrer: r.referrer || undefined,
+      searchQuery: r.search_query || undefined,
+      filtersJson: r.filters_json || undefined,
+      ipHash: r.ip_hash || undefined,
+      userAgent: r.user_agent || undefined,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async summarize(days = 30): Promise<any> {
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    const totals = this.db.prepare(
+      'SELECT event_type, COUNT(*) AS count FROM activity_events WHERE created_at >= ? GROUP BY event_type ORDER BY count DESC'
+    ).all(since) as any[];
+    const pageViews = this.db.prepare(
+      "SELECT path, COUNT(*) AS views FROM activity_events WHERE created_at >= ? AND event_type = 'page_view' GROUP BY path ORDER BY views DESC LIMIT 20"
+    ).all(since) as any[];
+    const vehicleViews = this.db.prepare(
+      "SELECT entity_id, COUNT(*) AS views FROM activity_events WHERE created_at >= ? AND event_type = 'vehicle_view' GROUP BY entity_id ORDER BY views DESC LIMIT 20"
+    ).all(since) as any[];
+    const byDay = this.db.prepare(
+      'SELECT SUBSTR(created_at, 1, 10) AS day, COUNT(*) AS events FROM activity_events WHERE created_at >= ? GROUP BY day ORDER BY day'
+    ).all(since) as any[];
+    return {
+      since,
+      eventTotals: totals,
+      totalEvents: totals.reduce((sum: number, row: any) => sum + row.count, 0),
+      topPages: pageViews,
+      topVehicles: vehicleViews,
+      daily: byDay,
+    };
+  }
+}
+
 export class SqliteDatabaseService implements IDatabaseService {
   public users: IUserRepository;
   public vehicles: IVehicleRepository;
@@ -1902,6 +2240,9 @@ export class SqliteDatabaseService implements IDatabaseService {
   public cache: ICacheRepository;
   public aiUsage: IAiUsageRepository;
   public notifications: INotificationRepository;
+  public statusHistory: IStatusHistoryRepository;
+  public settings: ISettingsRepository;
+  public activity: IActivityRepository;
 
   constructor(private db: DatabaseSync) {
     this.users = new SqliteUserRepository(db);
@@ -1917,6 +2258,9 @@ export class SqliteDatabaseService implements IDatabaseService {
     this.cache = new SqliteCacheRepository(db);
     this.aiUsage = new SqliteAiUsageRepository(db);
     this.notifications = new SqliteNotificationRepository(db);
+    this.statusHistory = new SqliteStatusHistoryRepository(db);
+    this.settings = new SqliteSettingsRepository(db);
+    this.activity = new SqliteActivityRepository(db);
   }
 
   async initialize(): Promise<void> {
