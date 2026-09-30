@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Search,
   CheckCircle2,
@@ -16,6 +16,7 @@ import {
 import { ScreenId } from '../types';
 import { TrustBadges } from '../components/TrustBadges';
 import { submitConcierge } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 
 interface FindCarScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -32,15 +33,26 @@ export const FindCarScreen: React.FC<FindCarScreenProps> = ({ onNavigate }) => {
   const [transmission, setTransmission] = useState('Automatic');
   const [colorPref, setColorPref] = useState('Black, Grey or Silver');
   const [interiorPref, setInteriorPref] = useState('Leather preferred');
-  const [fullName, setFullName] = useState('Adebayo Johnson');
-  const [phone, setPhone] = useState('+234 812 999 8877');
-  const [email, setEmail] = useState('adebayo.j@gmail.com');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [notes, setNotes] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ticketId, setTicketId] = useState<string>('');
   const [submitError, setSubmitError] = useState('');
   const [copiedTicket, setCopiedTicket] = useState(false);
+  const { user: authUser } = useAuthUser();
+
+  useEffect(() => {
+    if (authUser?.primaryEmailAddress?.emailAddress) {
+      setEmail(authUser.primaryEmailAddress.emailAddress);
+      setFullName(authUser.fullName || authUser.firstName + ' ' + authUser.lastName || '');
+    }
+    if (authUser?.primaryPhoneNumber?.phoneNumber) {
+      setPhone(authUser.primaryPhoneNumber.phoneNumber);
+    }
+  }, [authUser]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

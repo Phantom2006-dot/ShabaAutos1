@@ -114,7 +114,6 @@ export type ScreenId =
   | 'home'
   | 'buy-cars'
   | 'car-details'
-  | 'car-details-rav4'
   | 'rent-car'
   | 'import-landing'
   | 'import-form'

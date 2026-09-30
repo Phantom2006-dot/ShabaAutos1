@@ -31,8 +31,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   const isHomeActive = currentScreen === 'home';
   const isBuyActive =
     currentScreen === 'buy-cars' ||
-    currentScreen === 'car-details' ||
-    currentScreen === 'car-details-rav4';
+    currentScreen === 'car-details';
   const isRentActive = currentScreen === 'rent-car';
   const isImportActive =
     currentScreen === 'import-landing' || currentScreen === 'import-form';

@@ -169,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="shabaautos-dropdown-item"
           >
             <Clock size={14} className="text-[#158047] shrink-0" />
-            <span>Track Order (SA-IMP-00078)</span>
+            <span>Track Order (ORD-2024-0891)</span>
           </button>
 
           <button
@@ -296,8 +296,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => handleNavClick('buy-cars')}
               className={`shabaautos-nav-link gap-1 ${
                 currentScreen === 'buy-cars' ||
-                currentScreen === 'car-details' ||
-                currentScreen === 'car-details-rav4'
+                currentScreen === 'car-details'
                   ? 'active'
                   : ''
               }`}
@@ -317,8 +316,7 @@ export const Header: React.FC<HeaderProps> = ({
                 />
               </span>
               {(currentScreen === 'buy-cars' ||
-                currentScreen === 'car-details' ||
-                currentScreen === 'car-details-rav4') && (
+                currentScreen === 'car-details') && (
                 <span className="shabaautos-nav-indicator" />
               )}
             </button>
@@ -580,7 +578,7 @@ export const Header: React.FC<HeaderProps> = ({
                       className="shabaautos-dropdown-item text-[#12492f] font-bold justify-between"
                     >
                       <span className="flex items-center gap-2">
-                        <Clock size={14} /> Track Existing Order (SA-IMP-00078)
+                        <Clock size={14} /> Track Existing Order (ORD-2024-0891)
                       </span>
                       <ChevronRight size={13} />
                     </button>

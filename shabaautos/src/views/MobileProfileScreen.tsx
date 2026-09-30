@@ -299,31 +299,20 @@ export const MobileProfileScreen: React.FC<MobileProfileScreenProps> = ({
         {/* Tab 1: Overview & Activity */}
         {activeTab === 'overview' && (
           <div className="mt-3 space-y-3">
-            {/* Active Shipment / Order Tracking Card */}
+            {/* Import Tracking Card */}
             <article className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
-              <div className="flex items-center justify-between mb-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
-                    <Ship className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-900">Active Tokunbo Import</h3>
-                    <p className="text-[10px] text-slate-500 font-mono">SA-IMP-00078</p>
-                  </div>
+              <div className="flex items-center gap-2 mb-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+                  <Ship className="w-4 h-4" />
                 </div>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase">
-                  At Sea · In Transit
-                </span>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
-                <div className="flex justify-between text-slate-700 font-semibold mb-1">
-                  <span>2021 Toyota RAV4 XLE</span>
-                  <span className="font-bold text-[#0e7c3a]">ETA: 8 Days</span>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">Track Your Import</h3>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Vessel MSC Auriga en route to Tin Can Island Port, Lagos.
-                </p>
               </div>
+              <p className="text-[11px] text-slate-500 mb-3">
+                No active shipment on your account yet. Enter your Tracking ID to see live milestone status — ports, vessel, and ETA.
+
+              </p>
               <button
                 type="button"
                 onClick={() => onNavigate('order-tracking')}

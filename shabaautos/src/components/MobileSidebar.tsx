@@ -453,7 +453,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
                     onClick={() => handleNavClick('order-tracking')}
                     className="w-full text-left py-1.5 text-xs font-semibold text-emerald-800 font-bold block cursor-pointer"
                   >
-                    • Track Order (SA-IMP-00078)
+                    • Track Order (ORD-2024-0891)
                   </button>
                 </div>
               )}

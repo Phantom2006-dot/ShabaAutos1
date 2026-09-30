@@ -83,9 +83,9 @@ export async function seedDatabase(force = false): Promise<void> {
   });
 
   const customer = await dbService.users.create({
-    email: 'danielnworah9@gmail.com',
+    email: 'demo.b@shabaautos.com',
     passwordHash: customerPasswordHash,
-    fullName: 'Daniel Nworah',
+    fullName: 'ShabaAutos Demo Customer B',
     phone: '+234 813 456 7890',
     role: 'customer',
     status: 'active',
@@ -193,9 +193,9 @@ export async function seedDatabase(force = false): Promise<void> {
   const sampleOrder = await dbService.imports.createRequest({
     trackingId: TRACKED_ORDER.orderId || 'ORD-2024-0891',
     userId: customer.id,
-    customerName: 'Oluwasegun Ajibola',
+    customerName: 'ShabaAutos Demo Customer',
     phone: '+234 802 345 6789',
-    email: 'customer@shabaautos.com',
+    email: 'demo@shabaautos.com',
     make: 'Toyota',
     model: 'RAV4 XLE',
     year: 2022,
@@ -242,9 +242,9 @@ export async function seedDatabase(force = false): Promise<void> {
   const secondOrder = await dbService.imports.createRequest({
     trackingId: 'SHA-2026-9812',
     userId: customer.id,
-    customerName: 'Daniel Nworah',
+    customerName: 'ShabaAutos Demo Customer B',
     phone: '+234 813 456 7890',
-    email: 'danielnworah9@gmail.com',
+    email: 'demo.b@shabaautos.com',
     make: 'Lexus',
     model: 'RX 350 F-Sport',
     year: 2023,

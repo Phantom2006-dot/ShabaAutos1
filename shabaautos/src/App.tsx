@@ -50,7 +50,7 @@ export default function App() {
 
   const handleNavigate = (screen: ScreenId) => {
     setMobileMenuOpen(false);
-    if (screen === 'car-details' || screen === 'car-details-rav4') {
+    if (screen === 'car-details') {
       // No fake fallback vehicle — render the neutral “no vehicle selected” state;
       // real vehicles are only ever opened through handleSelectCar with the full DB record.
 
