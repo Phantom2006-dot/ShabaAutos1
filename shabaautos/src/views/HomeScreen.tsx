@@ -208,7 +208,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         <div className="mobile-app-copy">
           <p>THE SMARTER WAY TO MOVE</p>
-          <h1>Find a car that<br /><span>fits your life.</span></h1>
+          <h1>Buy a car that<br /><span>fits your life.</span></h1>
         </div>
 
         <form className="mobile-app-search" onSubmit={handleMobileSearch}>
