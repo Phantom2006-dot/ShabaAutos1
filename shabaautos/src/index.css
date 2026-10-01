@@ -696,7 +696,7 @@ select.dark-select option,
 
 @media (max-width: 639px) {
   .home-mobile-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 1.1rem 1rem .5rem; background: #fff; }
-  .home-mobile-brand .shaba-logo-mark { width: 2.25rem; height: 2.25rem; }
+  .home-mobile-brand .shaba-logo-img { height: 3.3rem; }
   .home-mobile-header-actions { display: flex; align-items: center; gap: .45rem; }
   .home-mobile-icon-button { position: relative; display: grid; place-items: center; width: 2.65rem; height: 2.65rem; border: 0; border-radius: 999px; color: #17251d; background: #f2f7f3; }
   .home-notification-dot { position: absolute; top: -.1rem; right: -.05rem; display: grid; place-items: center; min-width: 1.05rem; height: 1.05rem; padding: 0 .2rem; border-radius: 999px; background: #148047; color: #fff; font-size: .62rem; font-weight: 800; }
@@ -748,8 +748,7 @@ select.dark-select option,
   .auth-screen > div:first-child { padding: .7rem 1rem 0; }
   .auth-screen > div:first-child span { display: none; }
   .auth-mobile-brand { display: flex; align-items: flex-start; justify-content: center; gap: .75rem; padding: .35rem 1rem 0; }
-  .auth-mobile-brand .shaba-logo { gap: .5rem; }
-  .auth-mobile-brand .shaba-logo-mark { width: 2.5rem; height: 2.5rem; }
+  .auth-mobile-brand .shaba-logo-img { height: 3.3rem; }
   .auth-mobile-brand span { display: inline-flex; align-items: center; gap: .25rem; margin-top: .2rem; color: #12492f; font-size: .68rem; font-weight: 800; white-space: nowrap; }
   .auth-screen > div:nth-of-type(3) { padding: 1.2rem 1rem 3.8rem; }
   .auth-screen > div:nth-of-type(3) > div { display: block; }
@@ -1191,3 +1190,10 @@ html.dark { color-scheme: dark; }
   background-color: #ffffff !important;
 }
 .dark .bg-white.hover\:bg-slate-100:hover { background-color: #f1f5f2 !important; }
+
+/* Brand lockup: swap the light/dark artwork with the active theme. */
+.shaba-logo-img--dark { display: none; }
+.dark .shaba-logo-img--light { display: none; }
+.dark .shaba-logo-img--dark { display: block; }
+.shaba-logo--on-dark .shaba-logo-img--light { display: none; }
+.shaba-logo--on-dark .shaba-logo-img--dark { display: block; }
