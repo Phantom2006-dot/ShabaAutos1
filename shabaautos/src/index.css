@@ -696,7 +696,7 @@ select.dark-select option,
 
 @media (max-width: 639px) {
   .home-mobile-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: 1.1rem 1rem .5rem; background: #fff; }
-  .home-mobile-brand img { display: block; width: 9.25rem; height: auto; }
+  .home-mobile-brand .shaba-logo-mark { width: 2.25rem; height: 2.25rem; }
   .home-mobile-header-actions { display: flex; align-items: center; gap: .45rem; }
   .home-mobile-icon-button { position: relative; display: grid; place-items: center; width: 2.65rem; height: 2.65rem; border: 0; border-radius: 999px; color: #17251d; background: #f2f7f3; }
   .home-notification-dot { position: absolute; top: -.1rem; right: -.05rem; display: grid; place-items: center; min-width: 1.05rem; height: 1.05rem; padding: 0 .2rem; border-radius: 999px; background: #148047; color: #fff; font-size: .62rem; font-weight: 800; }
@@ -748,7 +748,8 @@ select.dark-select option,
   .auth-screen > div:first-child { padding: .7rem 1rem 0; }
   .auth-screen > div:first-child span { display: none; }
   .auth-mobile-brand { display: flex; align-items: flex-start; justify-content: center; gap: .75rem; padding: .35rem 1rem 0; }
-  .auth-mobile-brand img { width: 12rem; height: auto; }
+  .auth-mobile-brand .shaba-logo { gap: .5rem; }
+  .auth-mobile-brand .shaba-logo-mark { width: 2.5rem; height: 2.5rem; }
   .auth-mobile-brand span { display: inline-flex; align-items: center; gap: .25rem; margin-top: .2rem; color: #12492f; font-size: .68rem; font-weight: 800; white-space: nowrap; }
   .auth-screen > div:nth-of-type(3) { padding: 1.2rem 1rem 3.8rem; }
   .auth-screen > div:nth-of-type(3) > div { display: block; }
@@ -1064,3 +1065,129 @@ select,
 textarea {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
+
+/* ============================================================
+   Light / dark theme
+   Class-based dark mode applied on <html>. Defaults are light.
+   ============================================================ */
+
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+.shaba-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #dbe5de;
+  border-radius: 12px;
+  background: #fff;
+  color: #12492f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.shaba-theme-toggle:hover {
+  background: #eef6f0;
+  border-color: #b9cfc2;
+}
+
+.shaba-theme-toggle--compact {
+  width: 2.4rem;
+  min-width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border-radius: 0.8rem;
+}
+
+.shaba-logo-name { color: #0b1a12; }
+.shaba-logo-accent { color: #0e7c3a; }
+.shaba-logo-tagline { color: #64748b; }
+.shaba-logo--on-dark .shaba-logo-name { color: #ffffff; }
+.shaba-logo--on-dark .shaba-logo-accent { color: #4ade80; }
+.shaba-logo--on-dark .shaba-logo-tagline { color: #cbd5e1; }
+
+.dark .shaba-logo-name { color: #ffffff; }
+.dark .shaba-logo-accent { color: #4ade80; }
+.dark .shaba-logo-tagline { color: #cbd5e1; }
+.dark .shaba-theme-toggle { background: #151d19; border-color: #2a3730; color: #cfe8d8; }
+.dark .shaba-theme-toggle:hover { background: #1d2823; border-color: #35453c; }
+
+.dark body {
+  background: #0c120f;
+  color: #e7ede8;
+}
+
+.dark .shaba-screen {
+  background: radial-gradient(circle at 92% 4%, rgba(35, 137, 83, 0.12), transparent 24rem), #0c120f;
+}
+
+.dark .bg-white { background-color: #131a16 !important; }
+.dark .bg-white\/90, .dark .bg-white\/80, .dark .bg-white\/95 { background-color: rgba(19, 26, 22, 0.94) !important; }
+.dark .bg-\[\#f8f9fa\], .dark .bg-\[\#f6f8f6\], .dark .bg-\[\#f4f7f5\],
+.dark .bg-\[\#eef3f0\], .dark .bg-\[\#fbfdfb\], .dark .bg-\[\#fefefe\] { background-color: #0f1613 !important; }
+.dark .bg-slate-50, .dark .bg-gray-50 { background-color: #121a16 !important; }
+.dark .bg-slate-100, .dark .bg-gray-100 { background-color: #1b241f !important; }
+.dark .bg-slate-200, .dark .bg-gray-200 { background-color: #222d27 !important; }
+.dark .bg-emerald-50 { background-color: rgba(16, 94, 58, 0.24) !important; }
+
+.dark .text-slate-950, .dark .text-slate-900, .dark .text-slate-800,
+.dark .text-gray-900, .dark .text-gray-800, .dark .text-\[\#17251d\],
+.dark .text-\[\#0d1720\], .dark .text-\[\#26372c\] { color: #eef4ef !important; }
+.dark .text-slate-700, .dark .text-gray-700, .dark .text-slate-600, .dark .text-gray-600 { color: #c6d1ca !important; }
+.dark .text-slate-500, .dark .text-gray-500, .dark .text-slate-400, .dark .text-gray-400 { color: #9daba3 !important; }
+
+.dark .border-slate-100, .dark .border-slate-200, .dark .border-slate-300,
+.dark .border-gray-100, .dark .border-gray-200, .dark .border-gray-300,
+.dark .border-\[\#e4e9e3\] { border-color: #26332c !important; }
+.dark .shaba-surface, .dark .shaba-premium-card {
+  border-color: #26332c;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.dark input, .dark textarea, .dark select, .dark .shaba-select {
+  background-color: #151d19 !important;
+  color: #e9efea !important;
+  border-color: #2a3730 !important;
+}
+.dark input::placeholder, .dark textarea::placeholder { color: #7f8d85 !important; }
+
+.dark .shabaautos-navbar {
+  background: rgba(13, 19, 16, 0.9);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.dark .shabaautos-nav-link { color: #cbd6cf; }
+.dark .shabaautos-nav-link:hover, .dark .shabaautos-nav-link.active {
+  background: rgba(21, 128, 71, 0.16);
+  color: #7ce0a4;
+}
+.dark .shabaautos-account-trigger { background-color: #131a16 !important; }
+.dark .shabaautos-dropdown-panel, .dark .shabaautos-account-dropdown-panel {
+  background: #131a16;
+  border-color: #26332c;
+}
+.dark #mobile-bottom-nav {
+  background: rgba(13, 19, 16, 0.95) !important;
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .home-mobile-hero, .dark .home-mobile-header, .dark .rent-mobile-page { background: #0c120f !important; }
+.dark .mobile-app-search, .dark .mobile-saved-button, .dark .mobile-quick-actions button,
+.dark .mobile-car-card, .dark .mobile-feature-row button, .dark .mobile-trust-strip,
+.dark .rent-mobile-topbar > button, .dark .rent-mobile-car-card, .dark .rent-mobile-loading {
+  background: #131a16 !important;
+  border-color: #26332c !important;
+  color: #e7ede8 !important;
+}
+.dark .mobile-app-copy h1, .dark .mobile-car-info h3, .dark .mobile-section-heading h2 { color: #eef4ef !important; }
+.dark .mobile-car-info p, .dark .mobile-quick-actions small, .dark .mobile-trust-strip small,
+.dark .mobile-app-greeting, .dark .mobile-section-heading small { color: #9daba3 !important; }
+
+/* Brand-coloured text on white chips and buttons must keep its contrast. */
+.dark .bg-white.text-\[\#12492f\], .dark .bg-white.text-\[\#0a502c\], .dark .bg-white.text-\[\#0e7c3a\] {
+  background-color: #ffffff !important;
+}
+.dark .bg-white.hover\:bg-slate-100:hover { background-color: #f1f5f2 !important; }

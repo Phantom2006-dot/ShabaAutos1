@@ -30,6 +30,8 @@ import { fetchVehiclesWithPagination } from '../services/api';
 import { useAuthUser } from '../context/AuthContext';
 import bmwHeroBlack from '../assets/images/bmw_hero_coupe_1789257165323.jpg';
 import bmwHeroSilver from '../assets/images/bmw_silver_coupe_1789257180258.jpg';
+import { ThemeToggle } from '../components/ThemeToggle';
+import { ShabaAutosLogo } from '../components/ShabaAutosLogo';
 
 interface HomeScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -151,7 +153,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     <div className="min-h-screen bg-[#f8f9fa] shaba-screen">
       <div className="home-mobile-header sm:hidden">
         <div className="home-mobile-brand">
-          <img src="/assets/shabaautos-logo-new.png" alt="ShabaAutos - Your Car. Your Choice." />
+          <ShabaAutosLogo size="sm" />
         </div>
         <div className="home-mobile-header-actions">
           {isSignedIn && user ? (
@@ -201,9 +203,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <section className="home-mobile-hero sm:hidden">
         <div className="mobile-app-greeting">
           <div><span className="mobile-status-dot" /> {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'}</div>
-          <button type="button" onClick={() => onNavigate('saved-compare')} aria-label="View saved cars" className="mobile-saved-button">
-            <Bookmark className="w-4 h-4" />
-          </button>
+          <div>
+            <ThemeToggle compact />
+            <button type="button" onClick={() => onNavigate('saved-compare')} aria-label="View saved cars" className="mobile-saved-button">
+              <Bookmark className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="mobile-app-copy">

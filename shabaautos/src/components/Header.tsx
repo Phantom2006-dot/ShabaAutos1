@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { ShabaAutosLogo } from './ShabaAutosLogo';
+import { ThemeToggle } from './ThemeToggle';
 import { useAuthUser } from '../context/AuthContext';
 import { fetchVehiclesWithPagination } from '../services/api';
 import { useBusinessContact } from '../hooks/useBusinessContact';
@@ -731,6 +732,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Desktop Notification Bell */}
           <NotificationBell />
 
+          <ThemeToggle />
           {/* User Sign In / Profile with Dropdown */}
           <div
             className="shabaautos-dropdown shabaautos-account-dropdown"

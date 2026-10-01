@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ScreenId, AppUserRole } from '../types';
 import { useAuthUser } from '../context/AuthContext';
+import { ShabaAutosLogo } from '../components/ShabaAutosLogo';
 
 interface AuthModalScreenProps {
   onNavigate: (screen: ScreenId) => void;
@@ -206,7 +207,7 @@ export const AuthModalScreen: React.FC<AuthModalScreenProps> = ({
       </div>
 
       <div className="auth-mobile-brand sm:hidden">
-        <img src="/assets/shabaautos-logo-new.png" alt="ShabaAutos - Your Car. Your Choice." />
+        <ShabaAutosLogo size="sm" />
         <span><ShieldCheck className="w-4 h-4" /> Safe &amp; Secure</span>
       </div>
 
