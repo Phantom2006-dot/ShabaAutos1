@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { Car, ScreenId } from '../types';
 import { CustomSelect } from '../components/CustomSelect';
-import { fetchVehicles } from '../services/api';
+import { fetchVehiclesWithPagination } from '../services/api';
 import { useAuthUser } from '../context/AuthContext';
 import bmwHeroBlack from '../assets/images/bmw_hero_coupe_1789257165323.jpg';
 import bmwHeroSilver from '../assets/images/bmw_silver_coupe_1789257180258.jpg';
@@ -64,14 +64,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       alt: 'Black Futuristic BMW Concept Coupe',
       title: 'BMW Vision Concept Coupe',
       subtitle: 'Precision Aerodynamics & Electric Performance',
-      tag: 'Flagship Edition',
+      tag: 'Editorial image',
     },
     {
       image: bmwHeroSilver,
       alt: 'Silver BMW M4 Sports Coupe',
       title: 'BMW M-Series Coupe',
       subtitle: 'Dynamic Twin-Turbo Driving Excellence',
-      tag: 'Ready to Import & Rent',
+      tag: 'Editorial image',
     },
   ];
 
@@ -79,20 +79,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     let active = true;
     const loadPopularCars = async () => {
       try {
-        const cars = await fetchVehicles({ limit: 5, sort: 'year-desc' });
-        if (active && cars.length > 0) {
-          setPopularCars(cars.slice(0, 5));
-          return;
-        }
-        throw new Error('Empty vehicle response');
+        const result = await fetchVehiclesWithPagination({ page: 1, pageSize: 5, sort: 'newest' });
+        if (active) setPopularCars(result.success ? result.data : []);
       } catch {
-        try {
-          const response = await fetch('/api/vehicles?limit=5&sort=year-desc');
-          const payload = await response.json();
-          if (active && Array.isArray(payload.data)) setPopularCars(payload.data.slice(0, 5));
-        } catch {
-          if (active) setPopularCars([]);
-        }
+        if (active) setPopularCars([]);
       }
     };
     loadPopularCars()
@@ -117,6 +107,26 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     return () => window.clearInterval(timer);
   }, [isHeroCarouselHovered, heroSlides.length]);
 
+  const navigateToInventory = (filters: Record<string, string | number | undefined>) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') params.set(key, String(value));
+    });
+    const query = params.toString();
+    window.history.pushState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    onNavigate('buy-cars');
+  };
+
+  const getPriceFilters = () => {
+    switch (priceRange) {
+      case 'Under ₦20,000,000': return { maxPrice: 20000000 };
+      case '₦20m - ₦40,000,000': return { minPrice: 20000000, maxPrice: 40000000 };
+      case '₦40m - ₦70,000,000': return { minPrice: 40000000, maxPrice: 70000000 };
+      case 'Above ₦70,000,000': return { minPrice: 70000000 };
+      default: return {};
+    }
+  };
+
   const handleHeroSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (heroTab === 'rent') {
@@ -124,8 +134,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     } else if (heroTab === 'import') {
       onNavigate('import-landing');
     } else {
-      onNavigate('buy-cars');
+      navigateToInventory({
+        make: make !== 'Select Make' ? make : undefined,
+        model: model !== 'Select Model' ? model : undefined,
+        city: location !== 'Select Location' ? location : undefined,
+        ...getPriceFilters(),
+      });
     }
+  };
+
+  const handleMobileSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    navigateToInventory({ search: mobileSearch.trim() || undefined });
   };
 
   return (
@@ -137,7 +157,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <div className="home-mobile-header-actions">
           <button type="button" aria-label="Notifications" className="home-mobile-icon-button">
             <Bell className="w-5 h-5" />
-            <span className="home-notification-dot">3</span>
           </button>
           {isSignedIn && user ? (
             <button
@@ -196,10 +215,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <h1>Find a car that<br /><span>fits your life.</span></h1>
         </div>
 
-        <form className="mobile-app-search" onSubmit={(event) => { event.preventDefault(); onNavigate('buy-cars'); }}>
+        <form className="mobile-app-search" onSubmit={handleMobileSearch}>
           <Search className="w-5 h-5" />
           <input value={mobileSearch} onChange={(event) => setMobileSearch(event.target.value)} aria-label="Search cars" placeholder="Search make, model or keyword" />
-          <button type="button" aria-label="Open filters" onClick={() => onNavigate('buy-cars')}><SlidersHorizontal className="w-5 h-5" /></button>
+          <button type="button" aria-label="Open filters" onClick={() => navigateToInventory({ search: mobileSearch.trim() || undefined })}><SlidersHorizontal className="w-5 h-5" /></button>
         </form>
 
         <div className="mobile-quick-actions" aria-label="Main services">
@@ -210,31 +229,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         <div className="mobile-promo-carousel" aria-label="Featured ShabaAutos services">
           {[
-            { title: 'Drive with confidence.', copy: 'Every listed car is inspected and verified.', action: 'Browse verified cars', screen: 'buy-cars' as ScreenId, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1000&q=85' },
+            { title: 'Drive with confidence.', copy: 'Review details are available for each listing.', action: 'Browse reviewed listings', screen: 'buy-cars' as ScreenId, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1000&q=85' },
             { title: 'Your next adventure starts here.', copy: 'Flexible rentals, transparent pricing.', action: 'Explore rentals', screen: 'rent-car' as ScreenId, image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1000&q=85' },
             { title: 'Dream it. We import it.', copy: 'Find your perfect car from the USA.', action: 'Start importing', screen: 'import-landing' as ScreenId, image: 'https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=1000&q=85' },
           ].map((slide, index) => (
             <button type="button" key={slide.title} onClick={() => onNavigate(slide.screen)} className={`mobile-promo-slide ${mobileHeroSlide === index ? 'is-active' : ''}`}>
-              <img src={slide.image} alt="" />
+              <img src={slide.image} alt={`${slide.title} editorial image`} />
               <span className="mobile-promo-overlay" />
-              <span className="mobile-promo-content"><small>SHABAAUTOS PICKS</small><strong>{slide.title}</strong><em>{slide.copy}</em><span>{slide.action}<ChevronRight className="w-4 h-4" /></span></span>
+              <span className="mobile-promo-content"><small>EDITORIAL IMAGE · SHABAAUTOS PICKS</small><strong>{slide.title}</strong><em>{slide.copy}</em><span>{slide.action}<ChevronRight className="w-4 h-4" /></span></span>
             </button>
           ))}
           <div className="mobile-promo-dots">{[0, 1, 2].map((index) => <button type="button" key={index} aria-label={`Show promotion ${index + 1}`} onClick={() => setMobileHeroSlide(index)} className={mobileHeroSlide === index ? 'is-active' : ''} />)}</div>
         </div>
 
-        <div className="mobile-section-heading"><div><small>HANDPICKED FOR YOU</small><h2>Popular cars</h2></div><button type="button" onClick={() => onNavigate('buy-cars')}>See all <ChevronRight className="w-4 h-4" /></button></div>
+        <div className="mobile-section-heading"><div><small>RECENTLY LISTED</small><h2>Latest arrivals</h2></div><button type="button" onClick={() => onNavigate('buy-cars')}>See all <ChevronRight className="w-4 h-4" /></button></div>
         <div className="mobile-car-carousel">
           {isLoadingPopularCars ? <div className="mobile-car-loading">Finding your next car...</div> : popularCars.map((car) => {
             const isSaved = savedCarIds.includes(car.id);
             return <article key={car.id} className="mobile-car-card" onClick={() => { onSelectCar(car.id, car); onNavigate('car-details'); }}>
               <div className="mobile-car-image"><img src={car.images[0]} alt={`${car.year} ${car.make} ${car.model}`} /><button type="button" aria-label="Save car" onClick={(event) => { event.stopPropagation(); onToggleSaveCar(car.id); }}><Heart className={`w-4 h-4 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} /></button>{car.verified && <span><ShieldCheck className="w-3 h-3" /> Verified</span>}</div>
-              <div className="mobile-car-info"><h3>{car.make} {car.model}</h3><p>{car.year} · {car.transmission} · {car.mileage.toLocaleString()} km</p><div><strong>₦{car.priceNgn.toLocaleString()}</strong><small><MapPin className="w-3 h-3" /> {car.location}</small></div></div>
+              <div className="mobile-car-info"><h3>{car.make} {car.model}</h3><p>{car.year} · {car.transmission} · {car.mileage.toLocaleString()} {car.mileageUnit || 'km'}</p><div><strong>₦{car.priceNgn.toLocaleString()}</strong><small><MapPin className="w-3 h-3" /> Vehicle location: {car.location}</small></div><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([car.location, car.city, car.state].filter(Boolean).join(', '))}`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="text-[10px] font-semibold text-[#0e7c3a] hover:underline">View on Google Maps</a></div>
             </article>;
           })}
         </div>
 
-        <div className="mobile-trust-strip"><span><ShieldCheck className="w-5 h-5" /></span><div><strong>Shop with peace of mind</strong><small>Inspected cars. Transparent prices. Real support.</small></div><ChevronRight className="w-4 h-4" /></div>
+        <div className="mobile-trust-strip"><span><ShieldCheck className="w-5 h-5" /></span><div><strong>Shop with more confidence</strong><small>Listing review details. Clear terms. Real support.</small></div><ChevronRight className="w-4 h-4" /></div>
         <div className="mobile-feature-row"><button type="button" onClick={() => onNavigate('find-car')}><Zap className="w-4 h-4" /> Find a car for me</button><button type="button" onClick={() => onNavigate('sell-car')}><WalletCards className="w-4 h-4" /> Sell your car</button><button type="button" onClick={() => onNavigate('saved-compare')}><CircleHelp className="w-4 h-4" /> Saved cars</button></div>
       </section>
       {/* Hero Section matching web11.png */}
@@ -263,7 +282,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </h1>
 
               <p className="text-sm sm:text-base text-slate-600 font-medium">
-                Quality cars. Trusted service. Total peace of mind.
+                Explore cars. Helpful service. Clear next steps.
               </p>
 
               {/* 3 Pills matching web11.png */}
@@ -275,7 +294,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       Verified Vehicles
                     </span>
                     <span className="text-[10px] text-slate-500 font-medium block">
-                      Inspected &amp; Certified
+                      ShabaAutos review badge
                     </span>
                   </div>
                 </div>
@@ -566,10 +585,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
             <div>
               <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
-                100% Verified
+                Review status shown
               </h4>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                All vehicles are thoroughly inspected and verified
+                Review status is shown per listing
               </p>
             </div>
           </div>
@@ -583,7 +602,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 Transparent Pricing
               </h4>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                No hidden fees. What you see is what you pay
+                Fees and delivery are shown before checkout
               </p>
             </div>
           </div>
@@ -597,7 +616,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 Doorstep Delivery
               </h4>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                We deliver safely to your doorstep anywhere in Nigeria
+                Delivery options and fees depend on destination
               </p>
             </div>
           </div>
@@ -622,7 +641,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <section className="home-popular-section max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            Popular Cars
+            Latest Arrivals
           </h2>
           <button
             type="button"
@@ -687,7 +706,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
                     {/* Specs Row: 45,000 km • Automatic • Petrol */}
                     <div className="text-[11px] text-slate-500 mt-2 font-medium flex items-center gap-1.5 flex-wrap">
-                      <span>{car.mileage.toLocaleString()} km</span>
+                      <span>{car.mileage.toLocaleString()} {car.mileageUnit || 'km'}</span>
                       <span>•</span>
                       <span>{car.transmission}</span>
                       <span>•</span>
@@ -699,7 +718,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px]">
                     <span className="text-slate-500 font-medium flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-slate-400" />
-                      {car.location}
+                      <span>Vehicle location: {car.location}</span>
                     </span>
 
                     {car.verified && (
@@ -708,6 +727,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       </span>
                     )}
                   </div>
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([car.location, car.city, car.state].filter(Boolean).join(', '))}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(event) => event.stopPropagation()}
+                    className="mt-2 text-[10px] font-semibold text-[#0e7c3a] hover:underline"
+                  >
+                    View on Google Maps
+                  </a>
                 </div>
               </div>
             );

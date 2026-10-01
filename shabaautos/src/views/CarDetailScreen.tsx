@@ -9,25 +9,19 @@ import {
   CreditCard,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  Video,
   Star,
   Building2,
   MapPin,
   Calendar,
-  DollarSign,
-  Truck,
-  Check,
   X,
-  Clock,
   Send,
   Calculator,
   Loader2,
 } from 'lucide-react';
 import { Car, ScreenId } from '../types';
-import { TrustBadges } from '../components/TrustBadges';
-import { POPULAR_CARS, BUY_CARS_INVENTORY } from '../data/cars';
-import { submitPriceOffer, bookVehicleInspection, fetchPublicSettings } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
+import { useBusinessContact } from '../hooks/useBusinessContact';
+import { submitPriceOffer, bookVehicleInspection, fetchPublicSettings, fetchVehicleById } from '../services/api';
 
 interface CarDetailScreenProps {
   car?: Car;
@@ -44,12 +38,53 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
   onNavigate,
   isSaved = false,
   onToggleSave = () => {},
-  isImportVariant = false,
 }) => {
-  const car =
-    propCar ||
-    [...BUY_CARS_INVENTORY, ...POPULAR_CARS].find((c) => c.id === carId) ||
-    (isImportVariant || carId === 'rav4-2022' ? BUY_CARS_INVENTORY[0] : POPULAR_CARS[0]);
+  const resolvedCarId = carId || propCar?.id || '';
+  const { user, isSignedIn } = useAuthUser();
+  const businessContact = useBusinessContact();
+  const contactDigits = businessContact.phone.replace(/\D/g, '');
+  const [serverCar, setServerCar] = useState<Car | null>(null);
+  const [vehicleLoading, setVehicleLoading] = useState(Boolean(resolvedCarId));
+  const [vehicleNotFound, setVehicleNotFound] = useState(false);
+  const [vehicleLoadError, setVehicleLoadError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setServerCar(null);
+    setVehicleNotFound(false);
+    setVehicleLoadError(false);
+
+    if (!resolvedCarId) {
+      setVehicleLoading(false);
+      return () => { active = false; };
+    }
+
+    setVehicleLoading(true);
+    fetchVehicleById(resolvedCarId)
+      .then((result) => {
+        if (!active) return;
+        const matchesRequestedVehicle = result && (result.id === resolvedCarId || result.stockId === resolvedCarId);
+        if (matchesRequestedVehicle) {
+          setServerCar(result);
+        } else {
+          setVehicleNotFound(true);
+        }
+      })
+      .catch(() => {
+        if (active) setVehicleLoadError(true);
+      })
+      .finally(() => {
+        if (active) setVehicleLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [resolvedCarId, reloadNonce]);
+
+  // Keep an explicitly passed listing visible while the requested ID is being verified.
+  // Once the request resolves, only the server response is used as the source of truth.
+  const car = serverCar || (vehicleLoading ? propCar : undefined);
+  const isVerifiedCar = Boolean(serverCar);
 
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
@@ -71,19 +106,19 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
   }, []);
 
   // Purchase/Offer Form State
-  const [buyerName, setBuyerName] = useState('Oluwasegun Adebayo');
-  const [buyerPhone, setBuyerPhone] = useState('+234 803 123 9988');
-  const [buyerEmail, setBuyerEmail] = useState('o.adebayo@example.com');
-  const [offerAmount, setOfferAmount] = useState(car.priceNgn);
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState('');
+  const [offerAmount, setOfferAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState('Direct Bank Transfer');
   const [purchaseNotes, setPurchaseNotes] = useState('');
   const [offerSubmitting, setOfferSubmitting] = useState(false);
   const [offerResult, setOfferResult] = useState<{ id: string; message: string } | null>(null);
 
-  // Inspection Booking State
-  const [inspDate, setInspDate] = useState('2026-09-18');
-  const [inspTime, setInspTime] = useState('10:00 AM - 12:00 PM');
-  const [inspHub, setInspHub] = useState('ShabaAutos Flagship Hub, Lekki Phase 1, Lagos');
+  // Inspection request state starts blank; authenticated details are filled below.
+  const [inspDate, setInspDate] = useState('');
+  const [inspTime, setInspTime] = useState('');
+  const [inspHub, setInspHub] = useState('');
   const [inspType, setInspType] = useState<'Physical Inspection' | 'Live Video Tour' | 'Mechanic Verification'>('Physical Inspection');
   const [inspSubmitting, setInspSubmitting] = useState(false);
   const [inspResult, setInspResult] = useState<{ id: string; message: string } | null>(null);
@@ -92,39 +127,59 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
   const [downPaymentPercent, setDownPaymentPercent] = useState(30);
   const [loanTenureMonths, setLoanTenureMonths] = useState(24);
 
-  const images = car.images && car.images.length > 0 ? car.images : [
-    'https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1590362891991-f776e747a588?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80',
-    'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=1200&q=80',
-  ];
+  useEffect(() => {
+    if (isSignedIn && user) {
+      setBuyerName((current) => current || user.fullName || '');
+      setBuyerPhone((current) => current || user.phone || '');
+      setBuyerEmail((current) => current || user.email || '');
+    }
+  }, [isSignedIn, user]);
 
-  const handleShare = () => {
-    navigator.clipboard?.writeText(window.location.href);
-    setCopiedNotification(true);
-    setTimeout(() => setCopiedNotification(false), 2500);
+  useEffect(() => {
+    if (serverCar) {
+      setOfferAmount(serverCar.priceNgn);
+      setSelectedImageIndex(0);
+    }
+  }, [serverCar]);
+
+  const images = car?.images?.filter(Boolean) || [];
+  const shareUrl = car && typeof window !== 'undefined'
+    ? `${window.location.origin}${window.location.pathname}?carId=${encodeURIComponent(car.id)}`
+    : '';
+  const mapsUrl = car ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(car.location)}` : '';
+
+  const handleShare = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard?.writeText(shareUrl);
+      setCopiedNotification(true);
+      setTimeout(() => setCopiedNotification(false), 2500);
+    } catch {
+      setCopiedNotification(false);
+    }
   };
 
-  // Cost Breakdown calculation
-  const serviceFee = Math.round(car.priceNgn * 0.02);
+  // Cost breakdown is an estimate; destination-dependent charges remain subject to confirmation.
+  const serviceFee = car ? Math.round(car.priceNgn * 0.02) : 0;
   const docFee = sellFees.docFee;
   const deliveryFee = sellFees.deliveryFee;
-  const totalCost = car.priceNgn + serviceFee + docFee + deliveryFee;
+  const totalCost = car ? car.priceNgn + serviceFee + docFee + deliveryFee : 0;
 
-  // Loan calculation
-  const downPaymentAmount = Math.round(car.priceNgn * (downPaymentPercent / 100));
-  const loanPrincipal = car.priceNgn - downPaymentAmount;
-  const annualInterestRate = 0.18; // 18% annual standard auto loan rate in Nigeria
+  // Loan calculation is illustrative only; lender terms and eligibility vary.
+  const downPaymentAmount = car ? Math.round(car.priceNgn * (downPaymentPercent / 100)) : 0;
+  const loanPrincipal = car ? car.priceNgn - downPaymentAmount : 0;
+  const annualInterestRate = 0.18;
   const totalInterest = Math.round(loanPrincipal * annualInterestRate * (loanTenureMonths / 12));
   const totalLoanRepayable = loanPrincipal + totalInterest;
   const monthlyRepayment = Math.round(totalLoanRepayable / loanTenureMonths);
 
   const handleOfferSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!serverCar) return;
     setOfferSubmitting(true);
     const res = await submitPriceOffer({
-      carId: car.id,
-      carName: `${car.year} ${car.make} ${car.model}`,
+      carId: serverCar.id,
+      carName: `${serverCar.year} ${serverCar.make} ${serverCar.model}`,
       name: buyerName,
       phone: buyerPhone,
       email: buyerEmail,
@@ -143,10 +198,11 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
 
   const handleInspectionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!serverCar) return;
     setInspSubmitting(true);
     const res = await bookVehicleInspection({
-      carId: car.id,
-      carName: `${car.year} ${car.make} ${car.model}`,
+      carId: serverCar.id,
+      carName: `${serverCar.year} ${serverCar.make} ${serverCar.model}`,
       name: buyerName,
       phone: buyerPhone,
       email: buyerEmail,
@@ -159,14 +215,55 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
     if (res.success) {
       setInspResult({
         id: res.data?.id || 'Pending assignment',
-        message: res.message || 'Inspection scheduled successfully!',
+        message: res.message || 'Our team will follow up to confirm availability and next steps.',
       });
     }
   };
 
-  const whatsappMessage = encodeURIComponent(
-    `Hello ShabaAutos! I am interested in purchasing the ${car.year} ${car.make} ${car.model} (Stock ID: ${car.stockId}) listed for ₦${car.priceNgn.toLocaleString()}. Please share full inspection details.`
-  );
+  const whatsappMessage = car
+    ? encodeURIComponent(
+        `Hello ShabaAutos! I am interested in the ${car.year} ${car.make} ${car.model} (Stock ID: ${car.stockId}). Please share current availability and inspection details.`
+      )
+    : '';
+
+  if (vehicleLoading && !car) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] shaba-screen flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center shadow-xs max-w-md w-full">
+          <Loader2 className="w-8 h-8 animate-spin text-[#0a502c] mx-auto mb-4" />
+          <h1 className="text-lg font-bold text-gray-900">Loading vehicle listing</h1>
+          <p className="text-sm text-gray-600 mt-2">We are verifying this vehicle with the live inventory.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (vehicleLoadError) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] shaba-screen flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl border border-red-200 p-8 text-center shadow-xs max-w-md w-full">
+          <h1 className="text-lg font-bold text-gray-900">We could not load this listing</h1>
+          <p className="text-sm text-gray-600 mt-2">Please check your connection and try again, or browse current inventory.</p>
+          <div className="flex flex-wrap justify-center gap-3 mt-6">
+            <button onClick={() => setReloadNonce((value) => value + 1)} className="px-4 py-2 rounded-lg bg-[#0a502c] text-white text-xs font-bold">Try again</button>
+            <button onClick={() => onNavigate('buy-cars')} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 text-xs font-bold">Browse cars</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (vehicleNotFound || !car) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] shaba-screen flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 text-center shadow-xs max-w-md w-full">
+          <h1 className="text-lg font-bold text-gray-900">Vehicle listing not found</h1>
+          <p className="text-sm text-gray-600 mt-2">This listing may have been removed or the link may be out of date. We will not substitute another vehicle.</p>
+          <button onClick={() => onNavigate('buy-cars')} className="mt-6 px-5 py-2.5 rounded-lg bg-[#0a502c] text-white text-xs font-bold">Browse available cars</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] shaba-screen py-8">
@@ -199,17 +296,21 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                   Verified Vehicle
                 </span>
               )}
-              {car.cleanTitle && (
-                <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full border border-blue-200">
-                  Clean Title
-                </span>
-              )}
             </div>
 
             {/* Spec & Meta line */}
             <p className="text-xs text-gray-500 mt-2 font-medium">
               {car.mileage.toLocaleString()} {car.mileageUnit || 'km'} • {car.transmission} • {car.fuelType} • {car.location}
             </p>
+            <a
+              href={mapsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-[#0a502c] font-semibold mt-1 hover:underline"
+            >
+              <MapPin className="w-3 h-3" />
+              View listing area on Google Maps
+            </a>
             <p className="text-[11px] text-gray-400 mt-0.5">
               Listed {car.listedTimeAgo} • Stock ID: <span className="font-mono text-gray-600">{car.stockId}</span>
             </p>
@@ -250,67 +351,65 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
           <div className="lg:col-span-2 space-y-8">
             {/* Gallery Area */}
             <div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-4 shadow-xs">
-              {/* Main Image */}
-              <div className="relative h-80 sm:h-[420px] rounded-xl overflow-hidden bg-gray-950">
-                <img
-                  src={images[selectedImageIndex]}
-                  alt={`${car.make} ${car.model}`}
-                  className="w-full h-full object-cover"
-                />
-
-                {/* Left/Right controls */}
-                <button
-                  onClick={() =>
-                    setSelectedImageIndex((selectedImageIndex - 1 + images.length) % images.length)
-                  }
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-xs transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setSelectedImageIndex((selectedImageIndex + 1) % images.length)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-xs transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-
-                {/* Badge count */}
-                <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-xs text-white text-xs font-semibold px-3 py-1 rounded-full">
-                  {selectedImageIndex + 1} / {images.length + 20}
-                </div>
-
-                {/* 360 & Video buttons */}
-                <div className="absolute bottom-4 right-4 flex items-center gap-2">
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-xs text-white text-xs font-semibold transition-colors">
-                    <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                    360° View
-                  </button>
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-xs text-white text-xs font-semibold transition-colors">
-                    <Video className="w-3.5 h-3.5 text-emerald-400" />
-                    Video
-                  </button>
-                </div>
+              {/* Main Image: only real vehicle media is shown. */}
+              <div className="relative h-80 sm:h-[420px] rounded-xl overflow-hidden bg-gray-100">
+                {images.length > 0 ? (
+                  <>
+                    <img
+                      src={images[selectedImageIndex]}
+                      alt={`${car.make} ${car.model}`}
+                      className="w-full h-full object-cover"
+                    />
+                    {images.length > 1 && (
+                      <>
+                        <button
+                          aria-label="Previous vehicle photo"
+                          onClick={() => setSelectedImageIndex((selectedImageIndex - 1 + images.length) % images.length)}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-xs transition-colors"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                        <button
+                          aria-label="Next vehicle photo"
+                          onClick={() => setSelectedImageIndex((selectedImageIndex + 1) % images.length)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-xs transition-colors"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
+                    <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-xs text-white text-xs font-semibold px-3 py-1 rounded-full">
+                      {selectedImageIndex + 1} / {images.length}
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center px-6">
+                    <FileText className="w-10 h-10 text-gray-400 mb-3" />
+                    <p className="text-sm font-bold text-gray-700">Photos coming soon</p>
+                    <p className="text-xs text-gray-500 mt-1">No vehicle photos have been published for this listing.</p>
+                  </div>
+                )}
               </div>
 
-              {/* Thumbnails Row */}
-              <div className="flex items-center gap-3 mt-4 overflow-x-auto pb-1">
-                {images.map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedImageIndex(idx)}
-                    className={`relative w-20 h-16 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all ${
-                      selectedImageIndex === idx
-                        ? 'border-[#0a502c] ring-2 ring-emerald-200'
-                        : 'border-transparent opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    <img src={img} alt="thumb" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-                <div className="w-20 h-16 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 flex items-center justify-center text-xs font-bold text-gray-500 cursor-pointer hover:bg-gray-200">
-                  +19 More
+              {/* Thumbnails Row: the count matches the actual published media. */}
+              {images.length > 0 && (
+                <div className="flex items-center gap-3 mt-4 overflow-x-auto pb-1">
+                  {images.map((img, idx) => (
+                    <button
+                      key={img + idx}
+                      aria-label={`View vehicle photo ${idx + 1}`}
+                      onClick={() => setSelectedImageIndex(idx)}
+                      className={`relative w-20 h-16 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all ${
+                        selectedImageIndex === idx
+                          ? 'border-[#0a502c] ring-2 ring-emerald-200'
+                          : 'border-transparent opacity-70 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={img} alt="Vehicle thumbnail" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Vehicle Summary: 6 Metric Blocks */}
@@ -363,7 +462,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
               </div>
             </div>
 
-            {/* ShabaAutos Verified Banner */}
+            {/* Inspection status is limited to the evidence available on this listing. */}
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-start gap-3.5">
                 <div className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
@@ -371,18 +470,21 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-gray-900">
-                    ShabaAutos 150-Point Certified Vehicle
+                    {car.inspectionPassed ? 'Inspection status recorded' : 'Inspection available on request'}
                   </h4>
                   <p className="text-xs text-gray-600 mt-0.5 leading-relaxed max-w-xl">
-                    This vehicle has passed our thorough mechanical, diagnostic, electrical, and legal documentation inspection.
+                    {car.inspectionPassed
+                      ? 'The listing records an inspection status. Ask our team for supporting details before purchase.'
+                      : 'No published inspection report is attached to this listing. You can request an inspection before purchase.'}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setInspectionModalOpen(true)}
-                className="whitespace-nowrap px-4 py-2 bg-white border border-emerald-600 hover:bg-emerald-600 hover:text-white text-[#0a502c] text-xs font-bold rounded-lg transition-colors shadow-xs"
+                disabled={!isVerifiedCar}
+                className="whitespace-nowrap px-4 py-2 bg-white border border-emerald-600 hover:bg-emerald-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed text-[#0a502c] text-xs font-bold rounded-lg transition-colors shadow-xs"
               >
-                View Inspection Report
+                Request an inspection
               </button>
             </div>
 
@@ -463,23 +565,22 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
             {/* Price & Action Box */}
             <div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-6 shadow-xs sticky top-28">
               <div className="pb-4 border-b border-gray-100">
-                <span className="text-xs text-gray-500 font-semibold block">Total Vehicle Price</span>
+                <span className="text-xs text-gray-500 font-semibold block">Listed vehicle price</span>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="text-3xl font-black text-[#0a502c]">
                     ₦{car.priceNgn.toLocaleString()}
                   </span>
                   {car.priceUsd && (
                     <span className="text-xs font-bold text-gray-500">
-                      (${car.priceUsd.toLocaleString()} USD)
+                      (approx. ${car.priceUsd.toLocaleString()} USD reference)
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Best Price Guarantee badge */}
-              <div className="my-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center gap-2.5 text-xs text-[#0a502c] font-semibold">
-                <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-                <span>Best Price Guarantee — Zero hidden markups</span>
+              <div className="my-4 bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2.5 text-xs text-amber-900">
+                <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>Listed price and estimated charges are shown for transparency; confirm the final quote and destination costs with our team.</span>
               </div>
 
               {/* CTA Action Buttons */}
@@ -487,7 +588,8 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setPurchaseModalOpen(true)}
-                  className="w-full py-3 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                  disabled={!isVerifiedCar}
+                  className="w-full py-3 bg-[#0a502c] hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
                 >
                   <CreditCard className="w-4 h-4" />
                   Start Purchase / Make Offer
@@ -496,28 +598,29 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 <button
                   type="button"
                   onClick={() => setInspectionModalOpen(true)}
-                  className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 text-gray-800 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  disabled={!isVerifiedCar}
+                  className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed border border-gray-300 text-gray-800 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-[#0a502c]" />
                   Request Inspection &amp; Test Drive
                 </button>
 
-                <a
-                  href={`https://wa.me/2348123456789?text=${whatsappMessage}`}
+                {contactDigits && <a
+                  href={`https://wa.me/${contactDigits}?text=${whatsappMessage}`}
                   target="_blank"
                   rel="noreferrer"
                   className="w-full py-2.5 bg-white border border-[#0a502c] text-[#0a502c] hover:bg-emerald-50 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all text-center"
                 >
                   <MessageSquare className="w-4 h-4" />
                   Chat on WhatsApp
-                </a>
+                </a>}
               </div>
 
               {/* Need Financing Card */}
               <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
                 <h4 className="text-xs font-bold text-gray-900 mb-1">Need Vehicle Financing?</h4>
                 <p className="text-[11px] text-gray-500 leading-relaxed mb-2">
-                  Get pre-approved in under 24 hours with Stanbic IBTC, Access Bank, and GTBank.
+                  Use the calculator for an illustrative estimate. Lender rates, fees, eligibility, and timing vary; this is not a pre-approval.
                 </p>
                 <button
                   type="button"
@@ -531,7 +634,8 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
 
               {/* Estimated Cost Breakdown */}
               <div className="mt-6 pt-4 border-t border-gray-100 text-xs">
-                <h4 className="font-bold text-gray-800 mb-3">Estimated Cost Breakdown</h4>
+                <h4 className="font-bold text-gray-800 mb-1">Illustrative cost breakdown</h4>
+                <p className="text-[11px] text-gray-500 mb-3">Fees and delivery assumptions should be confirmed for your destination before purchase.</p>
                 <div className="space-y-2 text-gray-600">
                   <div className="flex justify-between">
                     <span>Vehicle Price</span>
@@ -540,25 +644,25 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>ShabaAutos Service Fee</span>
+                    <span>Estimated service fee</span>
                     <span className="font-semibold text-gray-900">
                       ₦{serviceFee.toLocaleString()}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Documentation &amp; Title Fee</span>
+                    <span>Estimated documentation fee</span>
                     <span className="font-semibold text-gray-900">
                       ₦{docFee.toLocaleString()}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Doorstep Delivery ({car.location})</span>
+                    <span>Estimated delivery fee ({car.location})</span>
                     <span className="font-semibold text-gray-900">
                       ₦{deliveryFee.toLocaleString()}
                     </span>
                   </div>
                   <div className="pt-2 border-t border-gray-200 flex justify-between font-bold text-sm text-[#0a502c]">
-                    <span>Total (All Inclusive)</span>
+                    <span>Estimated total</span>
                     <span>₦{totalCost.toLocaleString()}</span>
                   </div>
                 </div>
@@ -591,25 +695,21 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                       </div>
                     </div>
                   </div>
-                  <a
-                    href={`https://wa.me/2348123456789?text=${whatsappMessage}`}
+                  {contactDigits && <a
+                    href={`https://wa.me/${contactDigits}?text=${whatsappMessage}`}
                     target="_blank"
                     rel="noreferrer"
                     className="w-full mt-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 text-center"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
-                    Contact Dealer
-                  </a>
+                    Ask about this dealer
+                  </a>}
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Bottom Trust Badges */}
-        <div className="mt-16">
-          <TrustBadges variant="home" />
-        </div>
       </div>
 
       {/* Share Toast Notification */}
@@ -713,16 +813,25 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 </div>
 
                 <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Email (optional)</label>
+                  <input
+                    type="email"
+                    value={buyerEmail}
+                    onChange={(e) => setBuyerEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Preferred Payment Method</label>
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
                   >
-                    <option value="Direct Bank Transfer">Direct Bank Transfer (Zero Fees)</option>
-                    <option value="Vehicle Financing">Vehicle Auto Loan / Installment</option>
+                    <option value="Direct Bank Transfer">Direct bank transfer (requested method)</option>
+                    <option value="Vehicle Financing">Vehicle financing enquiry</option>
                     <option value="Bank Draft">Manager&apos;s Cheque / Bank Draft</option>
-                    <option value="Escrow Inspection Holding">ShabaAutos Secure Escrow</option>
                   </select>
                 </div>
 
@@ -781,9 +890,9 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
                   <CheckCircle2 className="w-7 h-7" />
                 </div>
-                <h4 className="text-base font-bold text-slate-900">Inspection Scheduled!</h4>
+                <h4 className="text-base font-bold text-slate-900">Inspection request received</h4>
                 <p className="text-xs text-slate-600 max-w-sm mx-auto">
-                  {inspResult.message} Appointment Code:{' '}
+                  {inspResult.message} Request reference:{' '}
                   <strong className="font-mono text-emerald-800">{inspResult.id}</strong>.
                 </p>
                 <button
@@ -799,7 +908,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
             ) : (
               <form onSubmit={handleInspectionSubmit} className="space-y-3.5">
                 <p className="text-xs text-gray-600 leading-relaxed">
-                  Book a physical appointment or live diagnostic video tour for stock{' '}
+                  Request a physical inspection or live diagnostic video tour for stock{' '}
                   <strong className="font-mono text-gray-800">{car.stockId}</strong>.
                 </p>
 
@@ -829,6 +938,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                     <input
                       type="date"
                       value={inspDate}
+                      min={new Date().toISOString().slice(0, 10)}
                       onChange={(e) => setInspDate(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
                       required
@@ -840,7 +950,9 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                       value={inspTime}
                       onChange={(e) => setInspTime(e.target.value)}
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
+                      required
                     >
+                      <option value="">Select a preferred time</option>
                       <option value="10:00 AM - 12:00 PM">Morning: 10:00 AM - 12:00 PM</option>
                       <option value="01:00 PM - 03:00 PM">Afternoon: 01:00 PM - 03:00 PM</option>
                       <option value="04:00 PM - 06:00 PM">Evening: 04:00 PM - 06:00 PM</option>
@@ -849,17 +961,15 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Inspection Hub Location</label>
-                  <select
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Preferred inspection location</label>
+                  <input
+                    type="text"
                     value={inspHub}
                     onChange={(e) => setInspHub(e.target.value)}
+                    placeholder="Tell us where you would prefer the inspection"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
-                  >
-                    <option value="ShabaAutos Flagship Hub, Lekki Phase 1, Lagos">Lagos: ShabaAutos Lekki Hub (Flagship)</option>
-                    <option value="ShabaAutos Service Hub, Ikeja GRA, Lagos">Lagos: Ikeja GRA Inspection Bay</option>
-                    <option value="ShabaAutos Hub, Maitama, Abuja">Abuja: Maitama Express Center</option>
-                    <option value="Client Doorstep / Mechanic Workshop">Doorstep Mobile Inspection Unit</option>
-                  </select>
+                    required
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -874,7 +984,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Phone (SMS Confirmation)</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Phone</label>
                     <input
                       type="tel"
                       value={buyerPhone}
@@ -885,13 +995,23 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Email (optional)</label>
+                  <input
+                    type="email"
+                    value={buyerEmail}
+                    onChange={(e) => setBuyerEmail(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
+                  />
+                </div>
+
                 <button
                   type="submit"
-                  disabled={inspSubmitting}
+                  disabled={inspSubmitting || !isVerifiedCar}
                   className="w-full py-2.5 bg-[#0a502c] hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
                 >
                   {inspSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
-                  Confirm Inspection Booking
+                  Submit inspection request
                 </button>
               </form>
             )}
@@ -976,8 +1096,9 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 </div>
                 <div className="pt-2 border-t border-slate-800 flex justify-between text-[11px] text-slate-400">
                   <span>Financed Amount: ₦{loanPrincipal.toLocaleString()}</span>
-                  <span>APR: 18.0%</span>
+                  <span>Illustrative rate: 18.0%</span>
                 </div>
+                <p className="text-[11px] text-slate-400">This estimate is not a pre-approval. Final lender terms, fees, and eligibility are determined separately.</p>
               </div>
 
               <button
@@ -988,7 +1109,7 @@ export const CarDetailScreen: React.FC<CarDetailScreenProps> = ({
                 }}
                 className="w-full py-2.5 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
-                Apply for Pre-Approval with this Quote
+                Submit financing enquiry
               </button>
             </div>
           </div>

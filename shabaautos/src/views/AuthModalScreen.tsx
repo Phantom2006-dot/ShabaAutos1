@@ -750,7 +750,7 @@ export const AuthModalScreen: React.FC<AuthModalScreenProps> = ({
                 <Headphones className="w-4 h-4 text-[#0e7c3a] flex-shrink-0" />
                 <div>
                   <h5 className="text-xs font-bold leading-tight">Automotive Concierge</h5>
-                  <p className="text-[10px] text-slate-500">+234 810 123 4567</p>
+                  <p className="text-[10px] text-slate-500">Request help finding a vehicle after signing in.</p>
                 </div>
               </div>
             </div>

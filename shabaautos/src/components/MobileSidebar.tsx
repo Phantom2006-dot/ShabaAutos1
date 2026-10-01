@@ -21,6 +21,8 @@ import {
 import { ScreenId } from '../types';
 import { ShabaAutosLogo } from './ShabaAutosLogo';
 import { useAuthUser } from '../context/AuthContext';
+import { fetchVehiclesWithPagination } from '../services/api';
+import { useBusinessContact } from '../hooks/useBusinessContact';
 
 interface MobileSidebarProps {
   isOpen: boolean;
@@ -45,9 +47,13 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
 }) => {
   const { user, isSignedIn, signOut } = useAuthUser();
   const isLoggedIn = isSignedIn || Boolean(user) || propIsLoggedIn;
+  const { phone } = useBusinessContact();
+  const phoneDigits = phone.replace(/\D/g, '');
+  const normalizedPhone = phone.replace(/[^\d+]/g, '');
+  const phoneHref = normalizedPhone ? `tel:${normalizedPhone}` : '';
+  const [inventoryTotal, setInventoryTotal] = useState<number | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCurrency, setSelectedCurrency] = useState<'NGN' | 'USD'>('NGN');
   const [mobileExpanded, setMobileExpanded] = useState<string | null>('buy');
 
   const sidebarRef = useRef<HTMLElement>(null);
@@ -63,10 +69,27 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
     onClose();
   };
 
-  const handleDrawerSearch = (e: React.FormEvent) => {
-    e.preventDefault();
+  const navigateToInventory = (filters: Record<string, string>) => {
+    const params = new URLSearchParams(filters);
+    const query = params.toString();
+    window.history.pushState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
     handleNavClick('buy-cars');
   };
+
+  const handleDrawerSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    navigateToInventory({ search: searchQuery.trim() });
+  };
+
+  useEffect(() => {
+    let active = true;
+    fetchVehiclesWithPagination({ page: 1, pageSize: 1 }).then((response) => {
+      if (active && response.success && Number.isFinite(response.total)) {
+        setInventoryTotal(response.total);
+      }
+    });
+    return () => { active = false; };
+  }, []);
 
   // Keyboard accessibility & Focus trap
   useEffect(() => {
@@ -179,7 +202,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
           </button>
         </div>
 
-        {/* Quick Search & Currency Bar */}
+        {/* Quick Search & Price Display */}
         <div className="p-4 bg-gray-50/80 border-b border-gray-100 space-y-2.5 shrink-0">
           <form onSubmit={handleDrawerSearch} className="relative">
             <input
@@ -192,33 +215,9 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
             <Search size={15} className="absolute left-3 top-3 text-gray-400" />
           </form>
 
-          {/* Currency & Quick Actions Row */}
+          {/* Quick Actions Row */}
           <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-gray-200">
-              <button
-                type="button"
-                onClick={() => setSelectedCurrency('NGN')}
-                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-colors cursor-pointer ${
-                  selectedCurrency === 'NGN'
-                    ? 'bg-[#12492f] text-white'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                ₦ NGN
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedCurrency('USD')}
-                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-colors cursor-pointer ${
-                  selectedCurrency === 'USD'
-                    ? 'bg-[#12492f] text-white'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                $ USD
-              </button>
-            </div>
-
+            <span className="text-[11px] font-semibold text-gray-500">Prices shown in Nigerian naira</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -257,7 +256,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
                   <Car size={16} />
                 </div>
                 <div className="text-xs font-bold text-gray-900">Buy a Car</div>
-                <div className="text-[10px] text-gray-500">56+ verified cars</div>
+                <div className="text-[10px] text-gray-500">{inventoryTotal !== null ? `${inventoryTotal} currently listed` : 'Browse current listings'}</div>
               </button>
 
               <button
@@ -293,7 +292,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
                   <DollarSign size={16} />
                 </div>
                 <div className="text-xs font-bold text-gray-900">Sell Car</div>
-                <div className="text-[10px] text-gray-500">Instant cash offer</div>
+                <div className="text-[10px] text-gray-500">Request a valuation</div>
               </button>
             </div>
           </div>
@@ -326,7 +325,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
               >
                 <span className="flex items-center gap-2.5">
                   <Car size={15} className="text-emerald-700" />
-                  Buy Verified Vehicles
+                  Buy Vehicles
                 </span>
                 <ChevronDown
                   size={15}
@@ -342,18 +341,18 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
                     onClick={() => handleNavClick('buy-cars')}
                     className="w-full text-left py-1.5 text-xs font-semibold text-gray-600 hover:text-[#12492f] block cursor-pointer"
                   >
-                    • All Inventory (56+ Cars)
+                    • All Current Inventory
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleNavClick('car-details-rav4')}
+                    onClick={() => navigateToInventory({ bodyType: 'SUV' })}
                     className="w-full text-left py-1.5 text-xs font-semibold text-gray-600 hover:text-[#12492f] block cursor-pointer"
                   >
                     • SUVs & Crossovers (Toyota, Lexus, Benz)
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleNavClick('car-details')}
+                    onClick={() => navigateToInventory({ bodyType: 'Sedan' })}
                     className="w-full text-left py-1.5 text-xs font-semibold text-gray-600 hover:text-[#12492f] block cursor-pointer"
                   >
                     • Sedans & Luxury Saloons
@@ -453,7 +452,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
                     onClick={() => handleNavClick('order-tracking')}
                     className="w-full text-left py-1.5 text-xs font-semibold text-emerald-800 font-bold block cursor-pointer"
                   >
-                    • Track Order (SA-IMP-00078)
+                    • Track an order
                   </button>
                 </div>
               )}
@@ -505,10 +504,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
             >
               <span className="flex items-center gap-2.5">
                 <Clock size={15} className="text-emerald-700" />
-                Live Ocean AIS Tracking
-              </span>
-              <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-2 py-0.5 rounded-full">
-                GPS Active
+                Order tracking
               </span>
             </button>
 
@@ -601,37 +597,41 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
               </button>
             )}
 
-            {/* 24/7 WhatsApp Chat button */}
-            <a
-              href="https://wa.me/2348123456789"
-              target="_blank"
-              rel="noreferrer"
-              className="w-full py-2.5 px-3.5 bg-emerald-50 hover:bg-emerald-100 text-[#12492f] text-xs font-bold rounded-xl flex items-center justify-between border border-emerald-200 transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <MessageSquare size={15} className="text-emerald-700" />
-                Chat on WhatsApp (24/7 Support)
-              </span>
-              <ChevronRight size={14} className="text-emerald-700" />
-            </a>
+            {/* Verified WhatsApp and phone contact buttons */}
+            {phone && (
+              <>
+                <a
+                  href={`https://wa.me/${phoneDigits}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-3.5 bg-emerald-50 hover:bg-emerald-100 text-[#12492f] text-xs font-bold rounded-xl flex items-center justify-between border border-emerald-200 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <MessageSquare size={15} className="text-emerald-700" />
+                    Chat with support on WhatsApp
+                  </span>
+                  <ChevronRight size={14} className="text-emerald-700" />
+                </a>
 
-            {/* Direct Phone Call */}
-            <a
-              href="tel:+2348123456789"
-              className="w-full py-2.5 px-3.5 bg-gray-50 hover:bg-gray-100 text-gray-800 text-xs font-bold rounded-xl flex items-center justify-between border border-gray-200 transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <Phone size={15} className="text-gray-600" />
-                Direct Hotline: +234 812 345 6789
-              </span>
-              <ChevronRight size={14} className="text-gray-400" />
-            </a>
+                {/* Direct Phone Call */}
+                <a
+                  href={phoneHref}
+                  className="w-full py-2.5 px-3.5 bg-gray-50 hover:bg-gray-100 text-gray-800 text-xs font-bold rounded-xl flex items-center justify-between border border-gray-200 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <Phone size={15} className="text-gray-600" />
+                    Direct Hotline: {phone}
+                  </span>
+                  <ChevronRight size={14} className="text-gray-400" />
+                </a>
+              </>
+            )}
           </div>
         </div>
 
         {/* Drawer Footer */}
         <div className="p-3 bg-gray-50 border-t border-gray-200 text-center text-[11px] text-gray-500 font-medium shrink-0">
-          ShabaAutos Nigeria Ltd • Tin Can Island Port, Lagos
+          ShabaAutos Nigeria Ltd • Location details available on request
         </div>
       </aside>
     </div>

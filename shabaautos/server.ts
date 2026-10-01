@@ -370,7 +370,7 @@ app.get('/api/ops/summary', requireAuth, requireRole(['staff', 'admin']), async 
   try {
     const [all, pending, reserved, sold, delisted] = await Promise.all([
       dbService.vehicles.list({ limit: 1000 }),
-      dbService.vehicles.list({ limit: 1000, verified: false }),
+      dbService.vehicles.list({ limit: 1000, verified: false, status: 'available' }),
       dbService.vehicles.list({ limit: 1000, status: 'reserved' }),
       dbService.vehicles.list({ limit: 1000, status: 'sold' }),
       dbService.vehicles.list({ limit: 1000, status: 'delisted' }),
@@ -410,6 +410,11 @@ app.post('/api/ops/vehicles', requireAuth, requireRole(['staff', 'admin']), asyn
     const required = ['make', 'model', 'year', 'priceNgn', 'mileage', 'stockId', 'description'];
     const missing = required.filter((field) => body[field] === undefined || body[field] === '');
     if (missing.length) return res.status(400).json({ success: false, message: `Missing required fields: ${missing.join(', ')}`, code: 'VALIDATION_ERROR' });
+    const year = Number(body.year), price = Number(body.priceNgn), mileage = Number(body.mileage);
+    if (!Number.isInteger(year) || year < 1886 || year > new Date().getFullYear() + 1 || !Number.isFinite(price) || price <= 0 || price > 100000000000 || !Number.isFinite(mileage) || mileage < 0 || mileage > 10000000) {
+      return res.status(400).json({ success: false, message: 'Enter a valid model year, positive price, and non-negative mileage.', code: 'VALIDATION_ERROR' });
+    }
+    if (['make', 'model', 'stockId', 'description'].some((field) => typeof body[field] !== 'string' || !body[field].trim() || body[field].length > 5000)) return res.status(400).json({ success: false, message: 'Vehicle details must be non-empty text within allowed limits.', code: 'VALIDATION_ERROR' });
     const created = await dbService.vehicles.create({
       make: String(body.make).trim(), model: String(body.model).trim(), year: Number(body.year),
       trim: body.trim ? String(body.trim) : undefined, priceNgn: Number(body.priceNgn),
@@ -417,7 +422,7 @@ app.post('/api/ops/vehicles', requireAuth, requireRole(['staff', 'admin']), asyn
       mileageUnit: body.mileageUnit === 'miles' ? 'miles' : 'km', transmission: body.transmission === 'Manual' ? 'Manual' : 'Automatic',
       fuelType: ['Diesel', 'Hybrid', 'Electric'].includes(body.fuelType) ? body.fuelType : 'Petrol',
       location: String(body.location || 'Lagos'), city: body.city ? String(body.city) : String(body.location || 'Lagos'),
-      state: body.state ? String(body.state) : undefined, verified: false, cleanTitle: body.cleanTitle !== false,
+      state: body.state ? String(body.state) : undefined, verified: false, cleanTitle: body.cleanTitle === true,
       condition: body.condition || 'Foreign Used (Tokunbo)', bodyType: body.bodyType || 'SUV', engine: String(body.engine || '2.5L 4-Cylinder'),
       driveType: body.driveType || 'FWD', color: String(body.color || 'Silver'), seats: Number(body.seats || 5),
       stockId: String(body.stockId).trim(), description: String(body.description).trim(), features: Array.isArray(body.features) ? body.features.map(String) : [],
@@ -436,8 +441,10 @@ app.patch('/api/ops/vehicles/:id/approve', requireAuth, requireRole('admin'), as
   try {
     const current = await dbService.vehicles.findById(req.params.id);
     if (!current) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
-    const updated = await dbService.vehicles.update(req.params.id, { verified: true, inspectionPassed: true });
-    await dbService.audit.record({ actorUserId: req.user!.id, actorRole: req.user!.role, action: 'vehicle.approve_listing', resourceType: 'vehicle', resourceId: req.params.id, ipAddress: req.ip, userAgent: req.get('user-agent') || undefined, changesJson: JSON.stringify({ before: { verified: current.verified, inspectionPassed: current.inspectionPassed }, after: { verified: true, inspectionPassed: true } }) });
+    if (current.status !== 'available') return res.status(409).json({ success: false, message: 'Only available vehicles can be approved for publication.' });
+    if (!(await dbService.vehicles.getImages(req.params.id)).length) return res.status(409).json({ success: false, message: 'Upload at least one real vehicle photo before publishing.' });
+    const updated = await dbService.vehicles.update(req.params.id, { verified: true });
+    await dbService.audit.record({ actorUserId: req.user!.id, actorRole: req.user!.role, action: 'vehicle.approve_listing', resourceType: 'vehicle', resourceId: req.params.id, ipAddress: req.ip, userAgent: req.get('user-agent') || undefined, changesJson: JSON.stringify({ before: { verified: current.verified }, after: { verified: true }, inspectionPassed: current.inspectionPassed }) });
     const staffUsers = (await dbService.users.list(100, 0)).filter((user) => user.role === 'staff' || user.role === 'admin');
     await Promise.all(staffUsers.map((user) => dbService.notifications.create({ userId: user.id, recipientEmail: user.email, channel: 'in_app', title: 'Vehicle listing approved', message: `${current.year} ${current.make} ${current.model} (${current.stockId}) is now verified and ready for customer discovery.`, status: 'queued', relatedEntityType: 'vehicle', relatedEntityId: req.params.id })));
     res.json({ success: true, data: updated });
@@ -449,6 +456,14 @@ app.patch('/api/ops/vehicles/:id/approve', requireAuth, requireRole('admin'), as
 app.get('/api/ops/notifications', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
   try { res.json({ success: true, data: await dbService.notifications.listByUserId(req.user!.id) }); }
   catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+app.patch('/api/ops/notifications/:id/read', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    const marked = await dbService.notifications.markRead(req.params.id, req.user!.id);
+    if (!marked) return res.status(404).json({ success: false, message: 'Notification not found for this account.' });
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
 });
 
 app.get('/api/ops/audit', requireAuth, requireRole('admin'), async (_req: Request, res: Response) => {
@@ -491,7 +506,7 @@ async function formatVehicleToCar(v: any, images?: string[], seller?: any): Prom
     year: Number(v.year),
     trim: v.trim || undefined,
     priceNgn: Number(v.priceNgn),
-    priceUsd: v.priceUsd ? Number(v.priceUsd) : Math.round(Number(v.priceNgn) / 1500),
+    priceUsd: v.priceUsd ? Number(v.priceUsd) : undefined,
     mileage: Number(v.mileage),
     mileageUnit: v.mileageUnit || 'km',
     transmission: v.transmission === 'Manual' ? 'Manual' : 'Automatic',
@@ -500,6 +515,7 @@ async function formatVehicleToCar(v: any, images?: string[], seller?: any): Prom
     city: v.city || 'Lagos',
     state: v.state || 'Lagos',
     verified: Boolean(v.verified),
+    status: v.status,
     cleanTitle: v.cleanTitle !== undefined ? Boolean(v.cleanTitle) : undefined,
     condition: v.condition || 'Nigeria Used',
     bodyType: v.bodyType || 'SUV',
@@ -537,14 +553,14 @@ app.get('/api/me/saved-vehicles', requireAuth, async (req: Request, res: Respons
     const vehicles = await Promise.all(
       saved.map(async (vId) => {
         const v = await dbService.vehicles.findById(vId);
-        return v ? formatVehicleToCar(v) : null;
+        return v && v.verified && v.status === 'available' ? formatVehicleToCar(v) : null;
       })
     );
     res.json({
       success: true,
-      savedCarIds: saved,
+      savedCarIds: saved.filter((_, index) => Boolean(vehicles[index])),
       vehicles: vehicles.filter(Boolean),
-      count: saved.length,
+      count: vehicles.filter(Boolean).length,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -557,6 +573,8 @@ app.post('/api/me/saved-vehicles/:vehicleId', requireAuth, async (req: Request, 
     if (!vehicleId) {
       return res.status(400).json({ success: false, message: 'vehicleId parameter is required' });
     }
+    const vehicle = await dbService.vehicles.findById(vehicleId);
+    if (!vehicle || !vehicle.verified || vehicle.status !== 'available') return res.status(404).json({ success: false, message: 'Vehicle is not available for saving.' });
     await dbService.saved.saveVehicle(req.user!.id, vehicleId);
     const saved = await dbService.saved.getSavedVehicles(req.user!.id);
     res.json({
@@ -721,14 +739,14 @@ app.get('/api/me/comparison', requireAuth, async (req: Request, res: Response) =
     const vehicles = await Promise.all(
       (list || []).map(async (vId) => {
         const v = await dbService.vehicles.findById(vId);
-        return v ? formatVehicleToCar(v) : null;
+        return v && v.verified && v.status === 'available' ? formatVehicleToCar(v) : null;
       })
     );
     res.json({
       success: true,
-      vehicleIds: list || [],
+      vehicleIds: (list || []).filter((_, index) => Boolean(vehicles[index])),
       vehicles: vehicles.filter(Boolean),
-      count: (list || []).length,
+      count: vehicles.filter(Boolean).length,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -741,12 +759,15 @@ const saveComparisonHandler = async (req: Request, res: Response) => {
     if (!Array.isArray(vehicleIds)) {
       return res.status(400).json({ success: false, message: 'vehicleIds array is required' });
     }
-    const sanitizedIds = vehicleIds.filter((id) => typeof id === 'string').slice(0, 5);
+    const sanitizedIds = [...new Set(vehicleIds.filter((id): id is string => typeof id === 'string'))];
+    if (sanitizedIds.length > 3) return res.status(400).json({ success: false, message: 'Compare up to three vehicles.' });
+    const selected = await Promise.all(sanitizedIds.map((id) => dbService.vehicles.findById(id)));
+    if (selected.some((v) => !v || !v.verified || v.status !== 'available')) return res.status(400).json({ success: false, message: 'One or more selected vehicles are no longer available.' });
     const saved = await dbService.saved.saveComparisonList(req.user!.id, 'Default Comparison', sanitizedIds);
     const vehicles = await Promise.all(
       saved.vehicleIds.map(async (vId) => {
         const v = await dbService.vehicles.findById(vId);
-        return v ? formatVehicleToCar(v) : null;
+        return v && v.verified && v.status === 'available' ? formatVehicleToCar(v) : null;
       })
     );
     res.json({
@@ -925,7 +946,8 @@ app.get('/api/vehicles', async (req: Request, res: Response) => {
       minMileage: minMileage ? parseInt(String(minMileage), 10) : undefined,
       maxMileage: maxMileage ? parseInt(String(maxMileage), 10) : undefined,
       city: city && city !== 'All Locations' && city !== 'All Cities' && city !== 'Select Location' ? String(city) : undefined,
-      verified: verified === 'true' ? true : verified === 'false' ? false : undefined,
+      verified: true,
+      status: 'available',
       search: search ? String(search).trim() : undefined,
       sort: sort ? String(sort) : 'newest',
       limit: pageSizeNum,
@@ -965,7 +987,7 @@ app.get('/api/vehicles/:id', async (req: Request, res: Response) => {
     if (!vehicle) {
       vehicle = await dbService.vehicles.findByStockId(id);
     }
-    if (!vehicle) {
+    if (!vehicle || !vehicle.verified || vehicle.status !== 'available') {
       return res.status(404).json({ success: false, message: `Vehicle '${id}' not found` });
     }
 
@@ -987,7 +1009,7 @@ app.post('/api/vehicles/:id/share-token', async (req: Request, res: Response) =>
     if (!vehicle) {
       vehicle = await dbService.vehicles.findByStockId(id);
     }
-    if (!vehicle) {
+    if (!vehicle || !vehicle.verified || vehicle.status !== 'available') {
       return res.status(404).json({ success: false, message: `Vehicle with ID or stock ID '${id}' not found` });
     }
 
@@ -1044,11 +1066,12 @@ app.post('/api/offers', requireAuth, async (req: Request, res: Response) => {
 
     // Do NOT trust client-provided price; look up genuine listing price from database
     const vehicle = await dbService.vehicles.findById(carId);
-    const trueListingPrice = vehicle ? vehicle.priceNgn : amount;
+    if (!vehicle || !vehicle.verified || vehicle.status !== 'available') return res.status(404).json({ success: false, message: 'This vehicle is no longer available for offers.' });
+    const trueListingPrice = vehicle.priceNgn;
 
     const offer = await dbService.offers.create({
       carId,
-      carName: carName || (vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : 'Vehicle'),
+      carName: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
       userId: req.user!.id,
       name: finalName,
       phone: finalPhone,
@@ -1111,10 +1134,12 @@ app.post('/api/inspections', requireAuth, async (req: Request, res: Response) =>
     const finalPhone = phoneRes.normalized;
 
     const vehicle = await dbService.vehicles.findById(carId);
+    if (!vehicle || !vehicle.verified || vehicle.status !== 'available') return res.status(404).json({ success: false, message: 'This vehicle is no longer available for inspections.' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(finalDate) || finalDate < new Date().toISOString().slice(0, 10)) return res.status(400).json({ success: false, message: 'Choose a future inspection date.' });
 
     const inspection = await dbService.inspections.create({
       carId,
-      carName: carName || (vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : 'Vehicle'),
+      carName: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
       userId: req.user!.id,
       name: finalName,
       phone: finalPhone,
@@ -1123,12 +1148,12 @@ app.post('/api/inspections', requireAuth, async (req: Request, res: Response) =>
       timeSlot: finalTime,
       hubLocation: finalHub,
       inspectionType: finalType,
-      status: 'Confirmed',
+      status: 'Pending',
     });
 
     res.status(201).json({
       success: true,
-      message: 'Inspection booked successfully! Our certified automotive inspector will be expecting you.',
+      message: 'Inspection request received. The team will contact you to confirm your preferred date.',
       data: inspection,
     });
   } catch (err: any) {
@@ -1175,14 +1200,21 @@ app.post('/api/rentals/book', requireAuth, async (req: Request, res: Response) =
     const finalEmail = (email || renterEmail || req.user?.email || '').trim();
     const finalPickup = (pickupDate || '').trim();
     const finalReturn = (returnDate || dropoffDate || '').trim();
-    const numDays = Math.max(1, parseInt(days as string, 10) || 1);
 
-    if (!finalName || !rawPhone || !finalPickup || !carId) {
+    if (!finalName || !rawPhone || !finalPickup || !finalReturn || !carId) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required rental reservation details (carId, name, phone, pickupDate)',
+        message: 'Provide a vehicle, contact details, pickup date, and return date.',
       });
     }
+    const parseDate = (value: string): number | null => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+      const time = Date.parse(`${value}T00:00:00Z`);
+      return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value ? time : null;
+    };
+    const pickupTime = parseDate(finalPickup), returnTime = parseDate(finalReturn);
+    const numDays = pickupTime !== null && returnTime !== null ? (returnTime - pickupTime) / 86400000 : 0;
+    if (pickupTime === null || returnTime === null || finalPickup < new Date().toISOString().slice(0, 10) || !Number.isInteger(numDays) || numDays < 1 || numDays > 90) return res.status(400).json({ success: false, message: 'Choose valid future dates with a return after pickup (up to 90 days).' });
 
     const phoneRes = normalizeNigerianPhone(rawPhone);
     if (!phoneRes.valid) {
@@ -1200,6 +1232,10 @@ app.post('/api/rentals/book', requireAuth, async (req: Request, res: Response) =
     if (!rentalVehicle) {
       return res.status(404).json({ success: false, message: 'Rental vehicle not found' });
     }
+    if (!rentalVehicle.available || rentalVehicle.status !== 'active') return res.status(409).json({ success: false, message: 'This fleet vehicle is not available for booking.' });
+    const requestedPickup = String(pickupLocation || rentalVehicle.location).trim();
+    const city = rentalVehicle.location.trim().toLowerCase();
+    if (!requestedPickup.toLowerCase().includes(city)) return res.status(400).json({ success: false, message: `This vehicle is currently offered in ${rentalVehicle.location}; select a pickup there.` });
 
     const dailyRate = rentalVehicle.pricePerDayNgn;
     // Configurable add-on rates come from site_settings (admin-editable);
@@ -1212,14 +1248,14 @@ app.post('/api/rentals/book', requireAuth, async (req: Request, res: Response) =
 
     const booking = await dbService.rentals.createBookingWithBlock({
       carId,
-      carName: carName || rentalVehicle.name,
+      carName: rentalVehicle.name,
       userId: req.user!.id,
       customerName: finalName,
       phone: finalPhone,
       email: finalEmail || undefined,
       pickupDate: finalPickup,
-      returnDate: finalReturn || finalPickup,
-      pickupLocation: pickupLocation || 'Lekki Hub, Lagos',
+      returnDate: finalReturn,
+      pickupLocation: requestedPickup,
       days: numDays,
       dailyRateNgn: dailyRate,
       withChauffeur: Boolean(withChauffeur),
@@ -1350,6 +1386,8 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
       phone,
       email,
       deliveryCity,
+      destinationPort,
+      originPort,
       vehicleType,
       fuelType,
       transmission,
@@ -1381,8 +1419,10 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
       });
     }
     const finalPhone = phoneRes.normalized;
-
-    const trackingId = `SHA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const supportedPorts = ['Tin Can Island Container Terminal, Lagos', 'Onne Port, Rivers State'];
+    if (!['Lagos', 'Abuja', 'Port Harcourt'].includes(deliveryCity) || !supportedPorts.includes(destinationPort)) return res.status(400).json({ success: false, message: 'Choose a supported delivery city and destination port.' });
+    if (vin && !/^[A-HJ-NPR-Z0-9]{17}$/i.test(String(vin).trim())) return res.status(400).json({ success: false, message: 'VIN must have 17 valid characters.' });
+    const trackingId = `SHA-${new Date().getFullYear()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
 
     const order = await dbService.imports.createRequest({
       trackingId,
@@ -1404,9 +1444,9 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
       driveType: driveType ? String(driveType) : undefined,
       mileagePref: mileagePref ? String(mileagePref) : undefined,
       features: Array.isArray(features) ? features : [],
-      deliveryCity: deliveryCity || 'Lagos',
-      destinationPort: 'Tin Can Island Container Terminal, Lagos',
-      originPort: 'Port of Newark, NJ, USA',
+      deliveryCity,
+      destinationPort,
+      originPort: typeof originPort === 'string' && originPort.trim() ? originPort.trim().slice(0, 120) : 'Origin to be confirmed',
       additionalNotes: additionalNotes || undefined,
       status: 'Sourcing Started',
     });
@@ -1416,7 +1456,7 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
       resourceType: 'import',
       resourceId: order.trackingId,
       toStatus: 'Sourcing Started',
-      note: 'Import request submitted by customer.',
+      note: 'Import request received; sourcing details are pending review.',
       changedBy: req.user!.id,
     }).catch(() => undefined);
 
@@ -1424,13 +1464,13 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
     await dbService.imports.addMilestone({
       trackingId,
       stepOrder: 1,
-      title: 'Order Submitted & US Agent Assigned',
-      description: 'Your sourcing request has been received and assigned to our US dealer auction team.',
+      title: 'Import request received',
+      description: 'Your request is recorded. Vehicle sourcing and logistics details require team confirmation.',
       scheduledDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       completedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       isCompleted: true,
       isCurrent: true,
-      location: 'ShabaAutos Operations Hub, Lagos',
+      location: deliveryCity,
     });
 
     await recordActivity({
@@ -1443,12 +1483,12 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
 
     res.status(201).json({
       success: true,
-      message: 'Import order request submitted! Your designated US sourcing specialist will contact you.',
+      message: 'Import request received. Our team will review the vehicle and route details before confirming next steps.',
       trackingId,
       data: order,
       statusHistory: [{
         toStatus: 'Sourcing Started',
-        note: 'Import request submitted by customer.',
+        note: 'Import request received; sourcing details are pending review.',
         createdAt: new Date().toISOString(),
       }],
     });
@@ -1460,7 +1500,7 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
 // -------------------------------------------------------------
 // 9. Order & Container Tracking (No Fabricated Facts)
 // -------------------------------------------------------------
-app.get('/api/tracking/:trackingId', async (req: Request, res: Response) => {
+app.get('/api/tracking/:trackingId', requireAuth, async (req: Request, res: Response) => {
   try {
     const query = req.params.trackingId.toUpperCase().trim();
     let order = await dbService.imports.findByTrackingId(query);
@@ -1476,6 +1516,10 @@ app.get('/api/tracking/:trackingId', async (req: Request, res: Response) => {
         code: 'TRACKING_NOT_FOUND',
         message: 'No active shipment found matching tracking code or VIN in our database.',
       });
+    }
+
+    if (order.userId !== req.user!.id && req.user!.role !== 'admin' && req.user!.role !== 'staff') {
+      return res.status(404).json({ success: false, found: false, code: 'TRACKING_NOT_FOUND', message: 'No order was found for this account.' });
     }
 
     const milestones = await dbService.imports.getMilestones(order.trackingId);
@@ -1575,9 +1619,10 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
     }
     const finalPhone = phoneRes.normalized;
 
-    const asking = Number(askingPriceNgn) || 15000000;
-    const carYear = parseInt(year as string, 10) || 2020;
-    const carMileage = Number(mileage) || 50000;
+    const asking = Number(askingPriceNgn);
+    const carYear = Number(year);
+    const carMileage = Number(mileage);
+    if (!Number.isInteger(carYear) || carYear < 1886 || carYear > new Date().getFullYear() + 1 || !Number.isFinite(carMileage) || carMileage < 0 || carMileage > 10000000 || (askingPriceNgn !== undefined && (!Number.isFinite(asking) || asking <= 0))) return res.status(400).json({ success: false, message: 'Enter a valid model year, non-negative mileage, and a positive asking price.' });
     const carCondition = condition || 'Nigeria Used';
 
     const valuation = await computeValuation(finalMake, finalModel, carYear, carMileage, carCondition);
@@ -1585,6 +1630,7 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
     const photoUrls = Array.isArray(photos) ? photos.map(String).filter((p) => /^https?:\/\//.test(p)).slice(0, 10) : [];
 
     const submission = await dbService.sell.create({
+      userId: req.user!.id,
       sellerName: finalSeller,
       phone: finalPhone,
       email: (email || req.user?.email || '').trim() || undefined,
@@ -1596,7 +1642,7 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
       condition: carCondition,
       issues: issues || undefined,
       location: location || 'Lagos',
-      askingPriceNgn: asking,
+      askingPriceNgn: askingPriceNgn === undefined ? valuation.estimatedValueNgn : asking,
       estimatedValueNgn: valuation.estimatedValueNgn,
       status: 'Under Review',
       photoUrls,
@@ -1637,7 +1683,7 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
 
     res.status(201).json({
       success: true,
-      message: 'Vehicle evaluation submitted! A ShabaAutos certified pricing specialist will inspect your vehicle details.',
+      message: 'Your valuation request was received for review. The estimate is preliminary and is not a purchase offer.',
       submissionId: submission.id,
       estimatedValueNgn: valuation.estimatedValueNgn,
       reviewStatus: 'pending',
@@ -1701,9 +1747,14 @@ app.post('/api/concierge', requireAuth, async (req: Request, res: Response) => {
     }
     const finalPhone = phoneRes.normalized;
 
-    const maxBudget = Number(maxBudgetNgn) || (budgetRange ? parseInt(String(budgetRange).replace(/[^0-9]/g, ''), 10) : 35000000) || 35000000;
+    const rangeNumbers = typeof budgetRange === 'string' ? [...budgetRange.matchAll(/(\d+(?:\.\d+)?)\s*(m|million)?/gi)] : [];
+    const rangeLast = rangeNumbers.at(-1);
+    const rangeMax = rangeLast ? Number(rangeLast[1]) * (rangeLast[2] ? 1000000 : 1) : NaN;
+    const maxBudget = maxBudgetNgn !== undefined ? Number(maxBudgetNgn) : rangeMax;
+    if (!Number.isFinite(maxBudget) || maxBudget <= 0 || maxBudget > 100000000000) return res.status(400).json({ success: false, message: 'Enter a valid maximum budget in naira.' });
 
     const request = await dbService.concierge.create({
+      userId: req.user!.id,
       fullName: finalName,
       phone: finalPhone,
       email: (email || req.user?.email || '').trim() || undefined,
@@ -1733,7 +1784,7 @@ app.post('/api/concierge', requireAuth, async (req: Request, res: Response) => {
     res.status(201).json({
       success: true,
       ticketId: request.id,
-      message: 'Your concierge request has been prioritized! An automotive sourcing executive will contact you shortly with matched vehicles.',
+      message: 'Your sourcing request was received. Our team will review your criteria and contact you about the next steps.',
       data: request,
     });
   } catch (err: any) {
@@ -1760,10 +1811,11 @@ app.get('/api/ops/sell', requireAuth, requireRole(['staff', 'admin']), async (re
 });
 
 // Approve / reject / request-more-info on a sell submission
-app.patch('/api/ops/sell/:id', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+app.patch('/api/ops/sell/:id', requireAuth, requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const reviewStatus = ['approved', 'rejected', 'needs_info', 'pending'].includes(req.body?.reviewStatus) ? req.body.reviewStatus : undefined;
     if (!reviewStatus) return res.status(400).json({ success: false, message: 'Invalid or missing reviewStatus' });
+    if (['rejected', 'needs_info'].includes(reviewStatus) && !String(req.body?.adminNotes || '').trim()) return res.status(400).json({ success: false, message: 'Enter a review note explaining this decision.' });
     const prev = await dbService.sell.findById(req.params.id);
     if (!prev) return res.status(404).json({ success: false, message: 'Submission not found.' });
     const updated = await dbService.sell.updateReview(req.params.id, {
@@ -1840,10 +1892,12 @@ app.get('/api/ops/imports', requireAuth, requireRole(['staff', 'admin']), async 
 // Tracking event recording for an import order
 app.post('/api/ops/imports/:trackingId/events', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
   try {
+    if (!await dbService.imports.findByTrackingId(req.params.trackingId)) return res.status(404).json({ success: false, message: 'Import request not found.' });
+    if (!String(req.body?.status || '').trim() || !String(req.body?.details || '').trim()) return res.status(400).json({ success: false, message: 'Provide the recorded event status and factual details.' });
     const event = await dbService.imports.addTrackingEvent({
       trackingId: req.params.trackingId,
       eventTimestamp: new Date().toISOString(),
-      status: String(req.body?.status || 'In Transit').slice(0, 100),
+      status: String(req.body.status).trim().slice(0, 100),
       location: req.body?.location ? String(req.body.location).slice(0, 100) : undefined,
       vesselName: req.body?.vesselName ? String(req.body.vesselName).slice(0, 100) : undefined,
       containerNo: req.body?.containerNo ? String(req.body.containerNo).slice(0, 100) : undefined,
@@ -1853,7 +1907,7 @@ app.post('/api/ops/imports/:trackingId/events', requireAuth, requireRole(['staff
     await dbService.statusHistory.record({
       resourceType: 'import',
       resourceId: req.params.trackingId,
-      toStatus: String(req.body?.status || 'In Transit').slice(0, 100),
+      toStatus: String(req.body.status).trim().slice(0, 100),
       note: req.body?.details ? String(req.body.details).slice(0, 500) : undefined,
       changedBy: req.user!.id,
     }).catch(() => undefined);
@@ -1904,8 +1958,11 @@ app.patch('/api/ops/rentals/:bookingId', requireAuth, requireRole(['staff', 'adm
     if (!req.body?.status || !allowedRental.includes(String(req.body.status))) return res.status(400).json({ success: false, message: 'Invalid or missing status' });
     const status = String(req.body.status) as 'Active Reservation' | 'Completed' | 'Cancelled';
     const prev = await dbService.rentals.findBookingById(req.params.bookingId);
-    const updated = await dbService.rentals.updateBookingStatus(req.params.bookingId, status);
-    const after = updated;
+    if (!prev) return res.status(404).json({ success: false, message: 'Booking not found.' });
+    if (prev.status !== 'Active Reservation' && prev.status !== status) return res.status(409).json({ success: false, message: 'A completed or cancelled reservation cannot be reopened. Create a new booking to check availability.' });
+    if (status === 'Cancelled') await dbService.rentals.cancelBooking(req.params.bookingId);
+    else if (status !== prev.status) await dbService.rentals.updateBookingStatus(req.params.bookingId, status);
+    const after = await dbService.rentals.findBookingById(req.params.bookingId);
     if (!after) return res.status(404).json({ success: false, message: 'Booking not found.' });
     await dbService.statusHistory.record({
       resourceType: 'rental',
@@ -1924,6 +1981,9 @@ app.patch('/api/ops/rentals/:bookingId', requireAuth, requireRole(['staff', 'adm
 app.get('/api/settings/public', async (_req: Request, res: Response) => {
   try {
     const keys = [
+      'site.contact_phone',
+      'site.contact_email',
+      'site.address',
       'rental.chauffeur_fee_day',
       'rental.insurance_fee_day',
       'import.usd_to_ngn',
@@ -1978,21 +2038,35 @@ app.get('/api/ops/settings', requireAuth, requireRole(['staff', 'admin']), async
    }
 });
 
-app.put('/api/ops/settings', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+app.put('/api/ops/settings', requireAuth, requireRole('admin'), async (req: Request, res: Response) => {
   try {
     const entries = Array.isArray(req.body?.settings) ? req.body.settings : [];
+    const numericKeys = new Set(['rental.chauffeur_fee_day', 'rental.insurance_fee_day', 'import.usd_to_ngn', 'import.freight_default_usd', 'import.freight_houston_usd', 'import.inland_towing_usd', 'import.duty_rate', 'import.duty_rate_ev', 'import.levy_rate', 'import.levy_rate_ev', 'import.vat_rate', 'import.terminal_charges_ngn', 'import.clearing_fee_ngn', 'sell.doc_fee_ngn', 'sell.delivery_fee_ngn']);
+    const contactKeys = new Set(['site.contact_phone', 'site.contact_email', 'site.address']);
+    if (!entries.length || entries.length > 20) return res.status(400).json({ success: false, message: 'Provide between 1 and 20 settings.' });
+    for (const entry of entries) {
+      const key = String(entry?.settingKey || '');
+      const value = String(entry?.settingValue ?? '');
+      if (!numericKeys.has(key) && !contactKeys.has(key) && key !== 'valuation.base_prices') return res.status(400).json({ success: false, message: `Setting ${key} is not editable.` });
+      if (numericKeys.has(key) && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 100000000 || (key.includes('rate') && key !== 'import.usd_to_ngn' && Number(value) > 1))) return res.status(400).json({ success: false, message: `Invalid numeric value for ${key}.` });
+      if (key === 'site.contact_phone' && value && !/^\+?[0-9\s()\-]{7,25}$/.test(value)) return res.status(400).json({ success: false, message: 'Enter a valid public contact number.' });
+      if (key === 'site.contact_email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return res.status(400).json({ success: false, message: 'Enter a valid public contact email.' });
+      if (key === 'site.address' && value.length > 250) return res.status(400).json({ success: false, message: 'Address must be 250 characters or fewer.' });
+      if (key === 'valuation.base_prices') {
+        let parsed: any;
+        try { parsed = JSON.parse(value); } catch { return res.status(400).json({ success: false, message: 'Vehicle base prices must be valid JSON.' }); }
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' || Object.values(parsed).some((v) => typeof v !== 'number' || !Number.isFinite(v) || v <= 0 || v > 1000000000)) return res.status(400).json({ success: false, message: 'Base prices must map makes to positive amounts in naira.' });
+      }
+    }
     const saved = [];
     for (const entry of entries) {
-      if (!entry?.settingKey || entry.settingValue === undefined) continue;
       saved.push(await dbService.settings.set({
         settingKey: String(entry.settingKey),
         settingValue: String(entry.settingValue),
-        valueType: ['string', 'number', 'boolean', 'json'].includes(entry.valueType) ? entry.valueType : 'string',
-        label: entry.label ? String(entry.label) : undefined,
-        description: entry.description ? String(entry.description) : undefined,
-        jurisdiction: entry.jurisdiction ? String(entry.jurisdiction) : undefined,
+        valueType: numericKeys.has(String(entry.settingKey)) ? 'number' : entry.settingKey === 'valuation.base_prices' ? 'json' : 'string',
         updatedBy: req.user!.id,
       }));
+      await dbService.audit.record({ actorUserId: req.user!.id, actorRole: req.user!.role, action: 'update_setting', resourceType: 'site_setting', resourceId: String(entry.settingKey), changesJson: JSON.stringify({ changed: true }) }).catch(() => undefined);
     }
     await recordActivity({
       eventType: 'admin_action',

@@ -15,6 +15,9 @@ const DEFAULT_SITE_SETTINGS: Array<{
   label?: string;
   description?: string;
 }> = [
+  { settingKey: 'site.contact_phone', settingValue: '', valueType: 'string', label: 'Business contact phone', description: 'Verified public contact number (E.164 or Nigerian format).' },
+  { settingKey: 'site.contact_email', settingValue: '', valueType: 'string', label: 'Business contact email', description: 'Verified public support email.' },
+  { settingKey: 'site.address', settingValue: '', valueType: 'string', label: 'Business address', description: 'Verified public location used for Google Maps directions.' },
   // Import duty calculator rates
   { settingKey: 'import.usd_to_ngn', settingValue: '1500', valueType: 'number', label: 'USD → NGN rate', description: 'Exchange rate used by the import duty estimator.' },
   { settingKey: 'import.freight_default_usd', settingValue: '1800', valueType: 'number', label: 'Default freight (USD)', description: 'Sea freight from major US ports.' },
@@ -57,6 +60,9 @@ export function getDatabaseType(): 'neon-postgres' | 'sqlite' {
 export function getDatabaseService(): IDatabaseService {
   if (!serviceInstance) {
     const hasDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
+    if (process.env.NODE_ENV === 'production' && !hasDatabaseUrl && process.env.USE_SQLITE !== 'true') {
+      throw new Error('DATABASE_URL is required in production. Refusing to use ephemeral SQLite.');
+    }
     const useSqlite = process.env.USE_SQLITE === 'true' || !hasDatabaseUrl;
 
     if (useSqlite) {
@@ -78,6 +84,7 @@ export function getDatabaseService(): IDatabaseService {
           .initialize()
           .then(() => seedDefaultSettings(postgresService))
           .catch((err) => {
+            if (process.env.NODE_ENV === 'production') throw err;
             console.warn('[Neon DB] Postgres initialization failed, falling back to SQLite:', err.message);
             const db = getDatabase();
             initializeDatabaseSchema(db);
@@ -90,6 +97,7 @@ export function getDatabaseService(): IDatabaseService {
         serviceInstance = postgresService;
         activeDbType = 'neon-postgres';
       } catch (err: any) {
+        if (process.env.NODE_ENV === 'production') throw err;
         console.warn('[Neon DB] Postgres connection failed, falling back to SQLite:', err.message);
         const db = getDatabase();
         initializeDatabaseSchema(db);

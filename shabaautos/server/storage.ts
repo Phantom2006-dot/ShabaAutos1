@@ -68,6 +68,10 @@ const CLOUDINARY_ENABLED = Boolean(
   process.env.CLOUDINARY_API_SECRET
 );
 
+if (process.env.NODE_ENV === 'production' && STORAGE_DRIVER === 'cloudinary' && !CLOUDINARY_ENABLED) {
+  throw new Error('Cloudinary storage is configured but CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, or CLOUDINARY_API_SECRET is missing.');
+}
+
 if (CLOUDINARY_ENABLED) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,

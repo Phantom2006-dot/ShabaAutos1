@@ -1,631 +1,143 @@
-import React, { useState } from 'react';
-import {
-  CheckCircle2,
-  Lock,
-  ChevronLeft,
-  ChevronRight,
-  Edit2,
-  Clock,
-  ShieldCheck,
-  CircleDollarSign,
-  Phone,
-  MessageSquare,
-  Sparkles,
-  Check,
-  Copy,
-  Loader2,
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit2, Check, Loader2 } from 'lucide-react';
 import { ScreenId } from '../types';
 import { TrustBadges } from '../components/TrustBadges';
 import { submitSellCarValuation } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 
-interface SellCarScreenProps {
-  onNavigate: (screen: ScreenId) => void;
-}
+interface SellCarScreenProps { onNavigate: (screen: ScreenId) => void; }
+const SELL_DRAFT_KEY = 'shabaautos.sell-car-draft';
+
+type CarData = {
+  make: string; model: string; year: string; trim: string; mileage: string;
+  mileageUnit: 'km' | 'miles'; transmission: string; fuelType: string;
+  location: string; askingPrice: string;
+};
 
 export const SellCarScreen: React.FC<SellCarScreenProps> = ({ onNavigate }) => {
-  const [agreementChecked, setAgreementChecked] = useState(true);
+  const { user, isLoaded, isSignedIn } = useAuthUser();
+  const [agreementChecked, setAgreementChecked] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submissionId, setSubmissionId] = useState<string>('');
+  const [submissionId, setSubmissionId] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [copiedId, setCopiedId] = useState(false);
-
-  // Edit states for sections
-  const [isEditingCar, setIsEditingCar] = useState(false);
-  const [isEditingCondition, setIsEditingCondition] = useState(false);
-  const [isEditingContact, setIsEditingContact] = useState(false);
-
-  // Form State
-  const [carData, setCarData] = useState({
-    make: 'Toyota',
-    model: 'Camry',
-    year: '2020',
-    trim: 'XLE',
-    mileage: '45000',
-    transmission: 'Automatic',
-    fuelType: 'Petrol',
-    location: 'Lekki, Lagos',
-    askingPrice: '15000000',
+  const [estimate, setEstimate] = useState<number | null>(null);
+  const [estimateReceivedAt, setEstimateReceivedAt] = useState<string | null>(null);
+  const [isEditingCar, setIsEditingCar] = useState(true);
+  const [isEditingCondition, setIsEditingCondition] = useState(true);
+  const [isEditingContact, setIsEditingContact] = useState(true);
+  const [carData, setCarData] = useState<CarData>({
+    make: '', model: '', year: '', trim: '', mileage: '', mileageUnit: 'km',
+    transmission: '', fuelType: '', location: '', askingPrice: '',
   });
+  const [conditionData, setConditionData] = useState({ condition: '', issues: '' });
+  const [contactData, setContactData] = useState({ fullName: '', phone: '', email: '' });
 
-  const [conditionData, setConditionData] = useState({
-    condition: 'Good',
-    issues: 'No major issues reported. Regular servicing maintained.',
-  });
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SELL_DRAFT_KEY);
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (draft.carData) setCarData((current) => ({ ...current, ...draft.carData }));
+        if (draft.conditionData) setConditionData((current) => ({ ...current, ...draft.conditionData }));
+        if (draft.contactData) setContactData((current) => ({ ...current, ...draft.contactData }));
+      }
+    } catch { /* Draft recovery is best effort. */ }
+  }, []);
 
-  const [contactData, setContactData] = useState({
-    fullName: 'John Doe',
-    phone: '+234 810 123 4567',
-    email: 'johndoe@gmail.com',
-  });
+  useEffect(() => {
+    if (!user) return;
+    setContactData((current) => ({
+      fullName: current.fullName || user.fullName || '',
+      phone: current.phone || user.phone || '',
+      email: current.email || user.email || '',
+    }));
+  }, [user]);
+
+  const saveDraft = () => {
+    try { localStorage.setItem(SELL_DRAFT_KEY, JSON.stringify({ carData, conditionData, contactData })); } catch { /* ignore */ }
+  };
 
   const handleSubmitValuation = async () => {
-    if (!agreementChecked) return;
-    setIsSubmitting(true);
     setSubmitError('');
+    const year = Number(carData.year);
+    const mileage = Number(carData.mileage);
+    const askingPriceNgn = Number(carData.askingPrice);
+    const errors: string[] = [];
+    if (!isLoaded) errors.push('Authentication is still loading. Please try again in a moment.');
+    if (!isSignedIn) {
+      saveDraft();
+      onNavigate('auth');
+      return;
+    }
+    if (!carData.make.trim() || !carData.model.trim()) errors.push('Enter the vehicle make and model.');
+    if (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 1) errors.push('Enter a valid vehicle year.');
+    if (!Number.isFinite(mileage) || mileage < 0) errors.push('Enter a valid mileage.');
+    if (!carData.trim.trim()) errors.push('Enter the vehicle trim.');
+    if (!carData.transmission || !carData.fuelType) errors.push('Select the transmission and fuel type.');
+    if (!conditionData.condition) errors.push('Select the vehicle condition.');
+    if (!carData.location.trim()) errors.push('Enter the vehicle location.');
+    if (!Number.isFinite(askingPriceNgn) || askingPriceNgn <= 0) errors.push('Enter an asking price greater than zero.');
+    if (!contactData.fullName.trim() || !contactData.phone.trim()) errors.push('Enter your name and phone number.');
+    if (contactData.email && !/^\S+@\S+\.\S+$/.test(contactData.email)) errors.push('Enter a valid email address or leave it blank.');
+    if (!agreementChecked) errors.push('Confirm that the information is accurate before submitting.');
+    if (errors.length) { setSubmitError(errors[0]); return; }
+
+    setIsSubmitting(true);
     try {
       const res = await submitSellCarValuation({
-        year: parseInt(carData.year) || 2020,
-        make: carData.make,
-        model: carData.model,
-        mileage: parseInt(carData.mileage) || 45000,
-        condition: conditionData.condition,
-        sellerName: contactData.fullName,
-        phone: contactData.phone,
-        email: contactData.email,
-        location: carData.location,
-        askingPriceNgn: parseInt(carData.askingPrice) || 15000000,
+        year, make: carData.make.trim(), model: carData.model.trim(), trim: carData.trim.trim(),
+        mileage, condition: conditionData.condition, sellerName: contactData.fullName.trim(),
+        phone: contactData.phone.trim(), email: contactData.email.trim() || undefined,
+        location: carData.location.trim(), askingPriceNgn,
+        transmission: carData.transmission, fuelType: carData.fuelType,
+        // The current API interface does not expose these fields, but the server accepts
+        // issues and the JSON request should retain the unit and reviewed vehicle details.
+        ...({ issues: `Mileage unit: ${carData.mileageUnit}. ${conditionData.issues.trim()}`.trim(), mileageUnit: carData.mileageUnit } as unknown as Record<string, unknown>),
       });
       if (!res?.success || !res.data?.id) throw new Error(res?.message || 'Vehicle valuation could not be submitted.');
       setSubmissionId(res.data.id);
+      if (typeof res.estimatedValueNgn === 'number') {
+        setEstimate(res.estimatedValueNgn);
+        setEstimateReceivedAt(new Date().toISOString());
+      }
       setSubmitted(true);
+      try { localStorage.removeItem(SELL_DRAFT_KEY); } catch { /* ignore */ }
     } catch (err: any) {
-      setSubmitError(err.message || 'Vehicle valuation could not be submitted. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
+      const message = String(err?.message || 'Vehicle valuation could not be submitted. Please try again.');
+      setSubmitError(/401|unauthori[sz]ed|sign.?in|auth/i.test(message) ? 'Please sign in to submit. Your entries are saved on this device.' : message);
+      saveDraft();
+    } finally { setIsSubmitting(false); }
   };
+
+  const formatNgn = (amount: number) => `₦${amount.toLocaleString('en-NG')}`;
+  const summaryVehicle = [carData.year, carData.make, carData.model, carData.trim].filter(Boolean).join(' ') || 'Vehicle details not yet provided';
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] shaba-screen py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-xs text-gray-500 mb-6">
-          <button onClick={() => onNavigate('home')} className="hover:text-[#0a502c]">
-            Home
-          </button>
-          <span>&gt;</span>
-          <button onClick={() => onNavigate('sell-car')} className="hover:text-[#0a502c]">
-            Sell Your Car
-          </button>
-          <span>&gt;</span>
-          <span className="font-semibold text-gray-900">Review &amp; Submit</span>
-        </nav>
-
-        {/* 3-Column Layout: Left Stepper / Center Content / Right Summary */}
+        <nav className="flex items-center gap-2 text-xs text-gray-500 mb-6"><button onClick={() => onNavigate('home')} className="hover:text-[#0a502c]">Home</button><span>&gt;</span><span className="font-semibold text-gray-900">Sell Your Car</span></nav>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Sidebar Stepper (3 Cols) */}
           <aside className="lg:col-span-3 space-y-6">
-            <div className="bg-white rounded-xl border shaba-surface border-gray-200 p-5 shadow-xs">
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 pb-3 border-b border-gray-100">
-                Sell Your Car
-              </h3>
-              <div className="space-y-4">
-                {/* Step 1 Done */}
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    ✓
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-gray-900">1. Car Details</h4>
-                    <p className="text-[11px] text-gray-500">Toyota Camry 2020</p>
-                  </div>
-                </div>
-
-                {/* Step 2 Done */}
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    ✓
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-gray-900">2. Condition</h4>
-                    <p className="text-[11px] text-gray-500">Good Condition</p>
-                  </div>
-                </div>
-
-                {/* Step 3 Done */}
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center font-bold text-xs flex-shrink-0">
-                    ✓
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-gray-900">3. Your Details</h4>
-                    <p className="text-[11px] text-gray-500">John Doe (+234...)</p>
-                  </div>
-                </div>
-
-                {/* Step 4 Active */}
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[#0a502c] text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-xs">
-                    4
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-[#0a502c]">4. Review &amp; Submit</h4>
-                    <p className="text-[11px] text-emerald-700 font-semibold">Almost there!</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Need Help Card */}
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5">
-              <h4 className="text-xs font-bold text-gray-900 mb-1">Need help selling?</h4>
-              <p className="text-[11px] text-gray-600 leading-relaxed mb-3">
-                Our vehicle appraisers can come directly to your office or home in Lagos, Abuja, or Port Harcourt.
-              </p>
-              <a
-                href="https://wa.me/2348123456789"
-                target="_blank"
-                rel="noreferrer"
-                className="w-full py-2 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-              >
-                <MessageSquare className="w-3.5 h-3.5" />
-                Chat with Appraiser
-              </a>
-            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs"><h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 pb-3 border-b border-gray-100">Sell Your Car</h3><div className="space-y-4 text-xs"><div className="flex items-start gap-3"><div className="w-7 h-7 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center font-bold">1</div><div><h4 className="font-bold">1. Car Details</h4><p className="text-[11px] text-gray-500">Provide the vehicle information</p></div></div><div className="flex items-start gap-3"><div className="w-7 h-7 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center font-bold">2</div><div><h4 className="font-bold">2. Condition</h4><p className="text-[11px] text-gray-500">Tell us what you know</p></div></div><div className="flex items-start gap-3"><div className="w-7 h-7 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center font-bold">3</div><div><h4 className="font-bold">3. Your Details</h4><p className="text-[11px] text-gray-500">Use your own contact details</p></div></div><div className="flex items-start gap-3"><div className="w-7 h-7 rounded-full bg-[#0a502c] text-white flex items-center justify-center font-bold">4</div><div><h4 className="font-bold text-[#0a502c]">4. Review &amp; Submit</h4><p className="text-[11px] text-emerald-700 font-semibold">Review before sending</p></div></div></div></div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5"><h4 className="text-xs font-bold text-gray-900 mb-1">Need help?</h4><p className="text-[11px] text-gray-600 leading-relaxed">Submit your details and a ShabaAutos specialist can follow up after review. Any inspection or offer is subject to confirmation.</p></div>
           </aside>
 
-          {/* Center Main Content (6 Cols) */}
-          <main className="lg:col-span-6 space-y-6">
-            <div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-6 sm:p-7 shadow-xs">
-              <div className="mb-6">
-                <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-                  Review &amp; Submit
-                </h1>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                  Please review your information carefully before submitting for certified appraisal.
-                </p>
-              </div>
+          <main className="lg:col-span-6"><div className="bg-white rounded-2xl border border-gray-200 p-6 sm:p-7 shadow-xs"><div className="mb-6"><h1 className="text-2xl font-black text-gray-900 tracking-tight">Sell Your Car</h1><p className="text-xs sm:text-sm text-gray-600 mt-1">Share accurate details for a preliminary valuation review. Required fields are not filled with sample data.</p></div>
+            {submitError && !submitted && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">{submitError}</div>}
+            {submitted ? <div className="py-10 text-center space-y-4"><div className="w-16 h-16 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center mx-auto"><CheckCircle2 className="w-8 h-8" /></div><h3 className="text-xl font-bold text-gray-900">Valuation request received</h3><div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-xs text-emerald-900 font-bold"><span>Valuation ticket: <span className="font-mono text-emerald-700">{submissionId}</span></span><button type="button" onClick={() => { navigator.clipboard?.writeText(submissionId); setCopiedId(true); setTimeout(() => setCopiedId(false), 2000); }} className="p-1 hover:bg-emerald-200 rounded" title="Copy ticket ID">{copiedId ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button></div><p className="text-xs text-gray-600 max-w-md mx-auto leading-relaxed">Your {summaryVehicle} request is recorded for review. A specialist will contact you using the details provided after assessing the submission. This is not a cash offer or a guaranteed valuation.</p><button onClick={() => setSubmitted(false)} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-lg">Edit submission</button></div> : <div className="space-y-6">
+              <section className="border border-gray-200 rounded-xl p-4 bg-gray-50/60"><div className="flex items-center justify-between pb-3 border-b border-gray-200"><h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Car details</h4><button type="button" onClick={() => setIsEditingCar(!isEditingCar)} className="text-xs font-semibold text-[#0a502c] flex items-center gap-1">{isEditingCar ? <><Check className="w-3 h-3" /> Done</> : <><Edit2 className="w-3 h-3" /> Edit</>}</button></div>{isEditingCar ? <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 text-xs">{([['Make','make','text'],['Model','model','text'],['Year','year','number'],['Trim','trim','text'],['Mileage','mileage','number'],['Location','location','text'],['Asking price (₦)','askingPrice','number']] as const).map(([label,key,type]) => <div key={key}><label className="block text-[11px] font-medium text-gray-600 mb-1">{label} *</label><input type={type} min={type === 'number' ? '0' : undefined} value={carData[key]} onChange={(e) => setCarData({ ...carData, [key]: e.target.value })} className="w-full bg-white border border-gray-300 rounded-lg p-2 font-medium text-gray-900" /></div>)}<div><label className="block text-[11px] font-medium text-gray-600 mb-1">Mileage unit *</label><select value={carData.mileageUnit} onChange={(e) => setCarData({ ...carData, mileageUnit: e.target.value as 'km' | 'miles' })} className="w-full bg-white border border-gray-300 rounded-lg p-2"><option value="km">Kilometres (km)</option><option value="miles">Miles</option></select></div><div><label className="block text-[11px] font-medium text-gray-600 mb-1">Transmission *</label><select value={carData.transmission} onChange={(e) => setCarData({ ...carData, transmission: e.target.value })} className="w-full bg-white border border-gray-300 rounded-lg p-2"><option value="">Select transmission</option><option>Automatic</option><option>Manual</option><option>CVT</option></select></div><div><label className="block text-[11px] font-medium text-gray-600 mb-1">Fuel type *</label><select value={carData.fuelType} onChange={(e) => setCarData({ ...carData, fuelType: e.target.value })} className="w-full bg-white border border-gray-300 rounded-lg p-2"><option value="">Select fuel type</option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></div></div> : <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-3 text-xs">{[['Vehicle',summaryVehicle],['Mileage',carData.mileage ? `${Number(carData.mileage).toLocaleString()} ${carData.mileageUnit}` : '—'],['Transmission',carData.transmission || '—'],['Fuel type',carData.fuelType || '—'],['Location',carData.location || '—'],['Asking price',carData.askingPrice ? formatNgn(Number(carData.askingPrice)) : '—']].map(([label,value]) => <div key={label}><span className="text-gray-500 text-[11px] block">{label}</span><span className="font-bold text-gray-900">{value}</span></div>)}</div>}</section>
+              <section className="border border-gray-200 rounded-xl p-4 bg-gray-50/60"><div className="flex items-center justify-between pb-3 border-b border-gray-200"><h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Condition</h4><button type="button" onClick={() => setIsEditingCondition(!isEditingCondition)} className="text-xs font-semibold text-[#0a502c] flex items-center gap-1">{isEditingCondition ? <><Check className="w-3 h-3" /> Done</> : <><Edit2 className="w-3 h-3" /> Edit</>}</button></div>{isEditingCondition ? <div className="pt-3 space-y-3 text-xs"><div><label className="block text-[11px] font-medium text-gray-600 mb-1">Overall condition *</label><select value={conditionData.condition} onChange={(e) => setConditionData({ ...conditionData, condition: e.target.value })} className="w-full bg-white border border-gray-300 rounded-lg p-2"><option value="">Select condition</option><option>Excellent</option><option>Good</option><option>Fair</option><option>Needs Work</option></select></div><div><label className="block text-[11px] font-medium text-gray-600 mb-1">Damage / notes (optional)</label><textarea rows={2} value={conditionData.issues} onChange={(e) => setConditionData({ ...conditionData, issues: e.target.value })} className="w-full bg-white border border-gray-300 rounded-lg p-2" /></div></div> : <div className="pt-3 text-xs"><span className="font-bold">{conditionData.condition || '—'}</span><p className="text-gray-600 mt-1">{conditionData.issues || 'No notes provided.'}</p></div>}</section>
+              <section className="border border-gray-200 rounded-xl p-4 bg-gray-50/60"><div className="flex items-center justify-between pb-3 border-b border-gray-200"><h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">Your details</h4><button type="button" onClick={() => setIsEditingContact(!isEditingContact)} className="text-xs font-semibold text-[#0a502c] flex items-center gap-1">{isEditingContact ? <><Check className="w-3 h-3" /> Done</> : <><Edit2 className="w-3 h-3" /> Edit</>}</button></div>{isEditingContact ? <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs">{([['Full name','fullName','text'],['Phone number','phone','tel'],['Email (optional)','email','email']] as const).map(([label,key,type]) => <div key={key}><label className="block text-[11px] font-medium text-gray-600 mb-1">{label}{key !== 'email' ? ' *' : ''}</label><input type={type} value={contactData[key]} onChange={(e) => setContactData({ ...contactData, [key]: e.target.value })} className="w-full bg-white border border-gray-300 rounded-lg p-2" /></div>)}</div> : <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs">{[['Full name',contactData.fullName],['Phone',contactData.phone],['Email',contactData.email || '—']].map(([label,value]) => <div key={label}><span className="text-gray-500 text-[11px] block">{label}</span><span className="font-bold break-words">{value || '—'}</span></div>)}</div>}</section>
+              <label className="flex items-start gap-3 p-3.5 rounded-xl bg-gray-50 border border-gray-200 cursor-pointer"><input type="checkbox" checked={agreementChecked} onChange={(e) => setAgreementChecked(e.target.checked)} className="mt-0.5 rounded-sm" /><span className="text-xs text-gray-600 leading-relaxed">I confirm these are my details and the information is accurate to the best of my knowledge. ShabaAutos may contact me about this request; any estimate is preliminary and subject to review and inspection.</span></label>
+              {!isSignedIn && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">Sign in is required to submit. Your form will be saved on this device and restored after sign-in.</p>}
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100"><button type="button" onClick={() => onNavigate('home')} className="px-5 py-2.5 border border-gray-300 text-gray-700 text-xs font-bold rounded-xl flex items-center gap-1.5"><ChevronLeft className="w-4 h-4" /> Back</button><button type="button" disabled={isSubmitting} onClick={handleSubmitValuation} className="px-8 py-3 bg-[#0a502c] hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-2">{isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting...</> : <>Submit valuation request <ChevronRight className="w-4 h-4" /></>}</button></div>
+            </div>}
+          </div></main>
 
-              {submitError && !submitted && (
-                <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">
-                  {submitError}
-                </div>
-              )}
-
-              {submitted ? (
-                <div className="py-10 text-center space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-xl font-bold text-gray-900">
-                    Vehicle Valuation Request Submitted!
-                  </h3>
-
-                  {/* Valuation Ticket Badge */}
-                  <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-xs text-emerald-900 font-bold mx-auto">
-                    <span>Valuation Ticket: <span className="font-mono text-emerald-700">{submissionId}</span></span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard?.writeText(submissionId);
-                        setCopiedId(true);
-                        setTimeout(() => setCopiedId(false), 2000);
-                      }}
-                      className="p-1 hover:bg-emerald-200 rounded text-emerald-800 cursor-pointer"
-                      title="Copy Ticket ID"
-                    >
-                      {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-
-                  <p className="text-xs text-gray-600 max-w-md mx-auto leading-relaxed">
-                    We have registered your {carData.year} {carData.make} {carData.model} {carData.trim}. Our valuation team will review market comps and call you at {contactData.phone} within 2 hours with our firm cash purchase offer.
-                  </p>
-                  <div className="pt-4 flex justify-center gap-3">
-                    <button
-                      onClick={() => onNavigate('home')}
-                      className="px-5 py-2.5 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                    >
-                      Return to Homepage
-                    </button>
-                    <button
-                      onClick={() => setSubmitted(false)}
-                      className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-semibold rounded-lg cursor-pointer"
-                    >
-                      Edit Submission
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Card 1: Car Details */}
-                  <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/60">
-                    <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-                      <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
-                        Car Details
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingCar(!isEditingCar)}
-                        className="text-xs font-semibold text-[#0a502c] hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        {isEditingCar ? (
-                          <>
-                            <Check className="w-3 h-3" /> Done
-                          </>
-                        ) : (
-                          <>
-                            <Edit2 className="w-3 h-3" /> Edit
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {isEditingCar ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 text-xs">
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Make</label>
-                          <input
-                            type="text"
-                            value={carData.make}
-                            onChange={(e) => setCarData({ ...carData, make: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Model</label>
-                          <input
-                            type="text"
-                            value={carData.model}
-                            onChange={(e) => setCarData({ ...carData, model: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Year</label>
-                          <input
-                            type="text"
-                            value={carData.year}
-                            onChange={(e) => setCarData({ ...carData, year: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Mileage (miles)</label>
-                          <input
-                            type="text"
-                            value={carData.mileage}
-                            onChange={(e) => setCarData({ ...carData, mileage: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Location</label>
-                          <input
-                            type="text"
-                            value={carData.location}
-                            onChange={(e) => setCarData({ ...carData, location: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Asking Price (₦)</label>
-                          <input
-                            type="text"
-                            value={carData.askingPrice}
-                            onChange={(e) => setCarData({ ...carData, askingPrice: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-3 text-xs">
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Make &amp; Model</span>
-                          <span className="font-bold text-gray-900">{carData.make} {carData.model}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Year &amp; Trim</span>
-                          <span className="font-bold text-gray-900">{carData.year} {carData.trim}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Mileage</span>
-                          <span className="font-bold text-gray-900">{parseInt(carData.mileage || '0').toLocaleString()} miles</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Transmission</span>
-                          <span className="font-bold text-gray-900">{carData.transmission}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Fuel Type</span>
-                          <span className="font-bold text-gray-900">{carData.fuelType}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Location</span>
-                          <span className="font-bold text-gray-900">{carData.location}</span>
-                        </div>
-                        <div className="col-span-2">
-                          <span className="text-gray-500 text-[11px] block">Asking Price</span>
-                          <span className="font-bold text-emerald-800">₦{parseInt(carData.askingPrice || '0').toLocaleString()}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card 2: Condition */}
-                  <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/60">
-                    <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-                      <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
-                        Condition
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingCondition(!isEditingCondition)}
-                        className="text-xs font-semibold text-[#0a502c] hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        {isEditingCondition ? (
-                          <>
-                            <Check className="w-3 h-3" /> Done
-                          </>
-                        ) : (
-                          <>
-                            <Edit2 className="w-3 h-3" /> Edit
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {isEditingCondition ? (
-                      <div className="pt-3 space-y-3 text-xs">
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Overall Condition</label>
-                          <select
-                            value={conditionData.condition}
-                            onChange={(e) => setConditionData({ ...conditionData, condition: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-2 font-bold text-gray-900"
-                          >
-                            <option value="Excellent">Excellent (Like new, zero scratches)</option>
-                            <option value="Good">Good (Minor wear, mechanically sound)</option>
-                            <option value="Fair">Fair (Needs cosmetic touchups)</option>
-                            <option value="Needs Work">Needs Work</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Damage / Notes</label>
-                          <input
-                            type="text"
-                            value={conditionData.issues}
-                            onChange={(e) => setConditionData({ ...conditionData, issues: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-2 font-medium text-gray-900"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 pt-3 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Overall Condition</span>
-                          <span className="font-bold text-gray-900 bg-emerald-100 text-[#0a502c] px-2 py-0.5 rounded-sm">
-                            {conditionData.condition}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Damage or Issues</span>
-                          <span className="font-semibold text-gray-800">{conditionData.issues}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card 3: Your Details */}
-                  <div className="border border-gray-200 rounded-xl p-4 bg-gray-50/60">
-                    <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-                      <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
-                        Your Details
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingContact(!isEditingContact)}
-                        className="text-xs font-semibold text-[#0a502c] hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        {isEditingContact ? (
-                          <>
-                            <Check className="w-3 h-3" /> Done
-                          </>
-                        ) : (
-                          <>
-                            <Edit2 className="w-3 h-3" /> Edit
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {isEditingContact ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs">
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Full Name</label>
-                          <input
-                            type="text"
-                            value={contactData.fullName}
-                            onChange={(e) => setContactData({ ...contactData, fullName: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Phone Number</label>
-                          <input
-                            type="tel"
-                            value={contactData.phone}
-                            onChange={(e) => setContactData({ ...contactData, phone: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">Email</label>
-                          <input
-                            type="email"
-                            value={contactData.email}
-                            onChange={(e) => setContactData({ ...contactData, email: e.target.value })}
-                            className="w-full bg-white border border-gray-300 rounded-lg p-1.5 font-bold text-gray-900"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs">
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Full Name</span>
-                          <span className="font-bold text-gray-900">{contactData.fullName}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Phone Number</span>
-                          <span className="font-bold text-gray-900">{contactData.phone}</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500 text-[11px] block">Email Address</span>
-                          <span className="font-bold text-gray-900">{contactData.email}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Confirmation Checkbox */}
-                  <label className="flex items-start gap-3 p-3.5 rounded-xl bg-gray-50 border border-gray-200 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={agreementChecked}
-                      onChange={(e) => setAgreementChecked(e.target.checked)}
-                      className="mt-0.5 rounded-sm border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <span className="text-xs text-gray-600 leading-relaxed">
-                      By submitting, you confirm that all information provided is accurate to the best of your knowledge. We&apos;ll use this information to give you the most accurate valuation offer.
-                    </span>
-                  </label>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => onNavigate('home')}
-                      className="px-5 py-2.5 border border-gray-300 hover:bg-gray-100 text-gray-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <ChevronLeft className="w-4 h-4" /> Back
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={!agreementChecked || isSubmitting}
-                      onClick={handleSubmitValuation}
-                      className="px-8 py-3 bg-[#0a502c] hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-2 transition-all shadow-md cursor-pointer"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span>Submitting Valuation...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>Submit Car for Valuation</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </main>
-
-          {/* Right Sidebar: Value Estimate & Timeline (3 Cols) */}
-          <aside className="lg:col-span-3 space-y-6">
-            {/* Expected Valuation Range Card */}
-            <div className="bg-white rounded-xl border shaba-surface border-gray-200 p-5 shadow-xs">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-                Car Summary
-              </span>
-              <div className="mt-3 rounded-lg overflow-hidden h-32 bg-gray-100 mb-3">
-                <img
-                  src="https://images.unsplash.com/photo-1621007947382-bb3c3994e3fb?auto=format&fit=crop&w=600&q=80"
-                  alt="Toyota Camry 2020"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <h4 className="font-bold text-sm text-gray-900">Toyota Camry 2020</h4>
-              <p className="text-xs text-gray-500 mt-0.5">45,000 miles • Condition: Good</p>
-
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <span className="text-xs text-gray-600 block">Expected Offer Range:</span>
-                <div className="text-lg font-black text-[#0a502c] mt-0.5">
-                  ₦13,000,000 - ₦16,500,000
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
-                  Final offer will be confirmed after free on-site physical and diagnostic inspection.
-                </p>
-              </div>
-            </div>
-
-            {/* What Happens Next Timeline */}
-            <div className="bg-white rounded-xl border shaba-surface border-gray-200 p-5 shadow-xs">
-              <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
-                What Happens Next?
-              </h4>
-              <div className="space-y-4 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-[#0a502c] font-bold flex items-center justify-center flex-shrink-0 text-xs">
-                    1
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-gray-900">We&apos;ll Review Your Details</h5>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">
-                      Our valuation team analyzes recent auction and dealer transaction prices.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-[#0a502c] font-bold flex items-center justify-center flex-shrink-0 text-xs">
-                    2
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-gray-900">You&apos;ll Get a Formal Offer</h5>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">
-                      Receive an instant guaranteed price quote valid for 7 days.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-[#0a502c] font-bold flex items-center justify-center flex-shrink-0 text-xs">
-                    3
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-gray-900">Free Inspection</h5>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">
-                      We inspect at your doorstep anywhere in Lagos, Abuja, or Port Harcourt.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-[#0a502c] font-bold flex items-center justify-center flex-shrink-0 text-xs">
-                    4
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-gray-900">Get Paid Fast</h5>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">
-                      Instant direct bank transfer within 30 minutes of document sign-off.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </aside>
-        </div>
-
-        {/* Bottom Trust Badges */}
-        <div className="mt-16">
-          <TrustBadges variant="home" />
-        </div>
+          <aside className="lg:col-span-3 space-y-6"><div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs"><span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Request summary</span><h4 className="font-bold text-sm text-gray-900 mt-3">{summaryVehicle}</h4><p className="text-xs text-gray-500 mt-1">{carData.mileage ? `${Number(carData.mileage).toLocaleString()} ${carData.mileageUnit}` : 'Mileage not provided'} · {conditionData.condition || 'Condition not selected'}</p><div className="mt-4 pt-4 border-t border-gray-100">{estimate !== null ? <><span className="text-xs text-gray-600 block">Preliminary estimate</span><div className="text-lg font-black text-[#0a502c] mt-0.5">{formatNgn(estimate)}</div><p className="text-[10px] text-gray-500 mt-1 leading-relaxed">Returned by the valuation service on {estimateReceivedAt ? new Date(estimateReceivedAt).toLocaleString() : 'submission'}. Algorithmic estimate, subject to review and inspection; not an offer.</p></> : <p className="text-[11px] text-gray-500 leading-relaxed">No estimate is shown until the backend receives and evaluates a complete submission.</p>}</div></div><div className="bg-white rounded-xl border border-gray-200 p-5 shadow-xs"><h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">What happens next</h4><div className="space-y-4 text-xs">{[['1','Request received','A specialist reviews the information you submitted.'],['2','Details confirmed','If needed, the team will contact you to clarify the vehicle details.'],['3','Inspection or offer','Any inspection and any offer are subject to eligibility, availability, and separate confirmation.'],['4','Next steps agreed','Terms, fees, timing, and payment arrangements are explained before you decide.']].map(([step,title,copy]) => <div className="flex items-start gap-3" key={step}><div className="w-6 h-6 rounded-full bg-emerald-50 text-[#0a502c] font-bold flex items-center justify-center flex-shrink-0">{step}</div><div><h5 className="font-bold text-gray-900">{title}</h5><p className="text-[11px] text-gray-500 leading-relaxed">{copy}</p></div></div>)}</div></div></aside>
+        </div><div className="mt-16"><TrustBadges variant="home" /></div>
       </div>
     </div>
   );

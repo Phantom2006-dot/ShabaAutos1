@@ -335,7 +335,7 @@ export class PostgresVehicleRepository implements IVehicleRepository {
     }
     if (filters?.search) {
       conditions.push(
-        `(LOWER(make) LIKE LOWER($${idx}) OR LOWER(model) LIKE LOWER($${idx}) OR LOWER(description) LIKE LOWER($${idx}) OR LOWER(location) LIKE LOWER($${idx++}))`
+        `(LOWER(make) LIKE LOWER($${idx}) OR LOWER(model) LIKE LOWER($${idx}) OR LOWER(description) LIKE LOWER($${idx}) OR LOWER(location) LIKE LOWER($${idx}) OR LOWER(stock_id) LIKE LOWER($${idx++}))`
       );
       values.push(`%${filters.search}%`);
     }
@@ -380,12 +380,12 @@ export class PostgresVehicleRepository implements IVehicleRepository {
   }
 
   async getFacets(): Promise<VehicleFacets> {
-    const makeRes = await this.pool.query("SELECT DISTINCT make FROM vehicles WHERE status != 'delisted' ORDER BY make ASC");
-    const modelRes = await this.pool.query("SELECT DISTINCT model FROM vehicles WHERE status != 'delisted' ORDER BY model ASC");
-    const bodyRes = await this.pool.query("SELECT DISTINCT body_type FROM vehicles WHERE status != 'delisted' AND body_type IS NOT NULL ORDER BY body_type ASC");
-    const condRes = await this.pool.query("SELECT DISTINCT condition FROM vehicles WHERE status != 'delisted' AND condition IS NOT NULL ORDER BY condition ASC");
-    const transRes = await this.pool.query("SELECT DISTINCT transmission FROM vehicles WHERE status != 'delisted' AND transmission IS NOT NULL ORDER BY transmission ASC");
-    const fuelRes = await this.pool.query("SELECT DISTINCT fuel_type FROM vehicles WHERE status != 'delisted' AND fuel_type IS NOT NULL ORDER BY fuel_type ASC");
+    const makeRes = await this.pool.query("SELECT DISTINCT make FROM vehicles WHERE verified = TRUE AND status = 'available' ORDER BY make ASC");
+    const modelRes = await this.pool.query("SELECT DISTINCT model FROM vehicles WHERE verified = TRUE AND status = 'available' ORDER BY model ASC");
+    const bodyRes = await this.pool.query("SELECT DISTINCT body_type FROM vehicles WHERE verified = TRUE AND status = 'available' AND body_type IS NOT NULL ORDER BY body_type ASC");
+    const condRes = await this.pool.query("SELECT DISTINCT condition FROM vehicles WHERE verified = TRUE AND status = 'available' AND condition IS NOT NULL ORDER BY condition ASC");
+    const transRes = await this.pool.query("SELECT DISTINCT transmission FROM vehicles WHERE verified = TRUE AND status = 'available' AND transmission IS NOT NULL ORDER BY transmission ASC");
+    const fuelRes = await this.pool.query("SELECT DISTINCT fuel_type FROM vehicles WHERE verified = TRUE AND status = 'available' AND fuel_type IS NOT NULL ORDER BY fuel_type ASC");
     const boundsRes = await this.pool.query(`
       SELECT 
         MIN(price_ngn) as min_price, 
@@ -395,7 +395,7 @@ export class PostgresVehicleRepository implements IVehicleRepository {
         MIN(mileage) as min_mileage,
         MAX(mileage) as max_mileage
       FROM vehicles 
-      WHERE status != 'delisted'
+      WHERE verified = TRUE AND status = 'available'
     `);
     const b = boundsRes.rows[0];
 
@@ -2168,6 +2168,11 @@ export class PostgresNotificationRepository implements INotificationRepository {
       createdAt: toIso(r.created_at),
       sentAt: r.sent_at ? toIso(r.sent_at) : undefined,
     }));
+  }
+
+  async markRead(id: string, userId: string): Promise<boolean> {
+    const result = await this.pool.query("UPDATE notifications SET status = 'read' WHERE id = $1 AND user_id = $2", [id, userId]);
+    return (result.rowCount || 0) > 0;
   }
 }
 

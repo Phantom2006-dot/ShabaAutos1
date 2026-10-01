@@ -47,11 +47,11 @@ Set these as Fly secrets; never commit them to GitHub:
 | `CLERK_SECRET_KEY` | Yes | Server-side Clerk token verification. |
 | `CLERK_WEBHOOK_SIGNING_SECRET` | If webhooks are enabled | Verifies Clerk webhook signatures. |
 | `CORS_ALLOWED_ORIGINS` | Yes | Exact Vercel origin, for example `https://shabaautos.vercel.app`. |
-| `APP_URL` | Yes | Canonical frontend URL used in links and server configuration. |
+| `APP_URL` | No | Not currently consumed by backend code; not needed to start this release. |
 | `GROQ_API_KEY` | Optional | Enables the optional AI assistance endpoints. Leave unset to use the safe deterministic response. |
-| `CLOUDINARY_CLOUD_NAME` | Optional | Enables durable uploaded image storage with the two Cloudinary credentials below. |
-| `CLOUDINARY_API_KEY` | Optional | Cloudinary server credential for image uploads and deletion. |
-| `CLOUDINARY_API_SECRET` | Optional | Cloudinary server credential for image uploads and deletion. |
+| `CLOUDINARY_CLOUD_NAME` | Yes with this Fly config | Durable media storage; production now refuses to start if any of the three Cloudinary credentials are missing. |
+| `CLOUDINARY_API_KEY` | Yes with this Fly config | Cloudinary server credential for image uploads and deletion. |
+| `CLOUDINARY_API_SECRET` | Yes with this Fly config | Cloudinary server credential for image uploads and deletion. |
 
 These are non-secret Fly environment variables and can be declared in `fly.toml`: `NODE_ENV=production`, `PORT=8080`, `DEMO_MODE=false`, `SEED_DATABASE=false`, `USE_SQLITE=false`, `STORAGE_DRIVER=cloudinary`, and `ACTIVITY_TRACKING=true`. `VITE_CLERK_PUBLISHABLE_KEY` is a **Vercel frontend variable**, not a Fly secret; the browser needs it to initialize Clerk. `VITE_API_BASE_URL` is also a Vercel variable and should point to the Fly HTTPS URL. Do not put either `VITE_*` value in Fly secrets.
 

@@ -225,6 +225,7 @@ export interface IAiUsageRepository {
 export interface INotificationRepository {
   create(notification: Omit<NotificationRecord, 'id' | 'createdAt'>): Promise<NotificationRecord>;
   listByUserId(userId: string): Promise<NotificationRecord[]>;
+  markRead(id: string, userId: string): Promise<boolean>;
 }
 
 export interface IDatabaseService {

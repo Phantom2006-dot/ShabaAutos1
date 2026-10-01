@@ -308,9 +308,9 @@ export class SqliteVehicleRepository implements IVehicleRepository {
       params.push(filters.maxMileage);
     }
     if (filters.search) {
-      conditions.push('(LOWER(make) LIKE LOWER(?) OR LOWER(model) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?) OR LOWER(location) LIKE LOWER(?))');
+      conditions.push('(LOWER(make) LIKE LOWER(?) OR LOWER(model) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?) OR LOWER(location) LIKE LOWER(?) OR LOWER(stock_id) LIKE LOWER(?))');
       const s = `%${filters.search}%`;
-      params.push(s, s, s, s);
+      params.push(s, s, s, s, s);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -346,12 +346,12 @@ export class SqliteVehicleRepository implements IVehicleRepository {
   }
 
   async getFacets(): Promise<VehicleFacets> {
-    const makeRows = this.db.prepare("SELECT DISTINCT make FROM vehicles WHERE status != 'delisted' ORDER BY make ASC").all() as any[];
-    const modelRows = this.db.prepare("SELECT DISTINCT model FROM vehicles WHERE status != 'delisted' ORDER BY model ASC").all() as any[];
-    const bodyRows = this.db.prepare("SELECT DISTINCT body_type FROM vehicles WHERE status != 'delisted' AND body_type IS NOT NULL ORDER BY body_type ASC").all() as any[];
-    const conditionRows = this.db.prepare("SELECT DISTINCT condition FROM vehicles WHERE status != 'delisted' AND condition IS NOT NULL ORDER BY condition ASC").all() as any[];
-    const transRows = this.db.prepare("SELECT DISTINCT transmission FROM vehicles WHERE status != 'delisted' AND transmission IS NOT NULL ORDER BY transmission ASC").all() as any[];
-    const fuelRows = this.db.prepare("SELECT DISTINCT fuel_type FROM vehicles WHERE status != 'delisted' AND fuel_type IS NOT NULL ORDER BY fuel_type ASC").all() as any[];
+    const makeRows = this.db.prepare("SELECT DISTINCT make FROM vehicles WHERE verified = 1 AND status = 'available' ORDER BY make ASC").all() as any[];
+    const modelRows = this.db.prepare("SELECT DISTINCT model FROM vehicles WHERE verified = 1 AND status = 'available' ORDER BY model ASC").all() as any[];
+    const bodyRows = this.db.prepare("SELECT DISTINCT body_type FROM vehicles WHERE verified = 1 AND status = 'available' AND body_type IS NOT NULL ORDER BY body_type ASC").all() as any[];
+    const conditionRows = this.db.prepare("SELECT DISTINCT condition FROM vehicles WHERE verified = 1 AND status = 'available' AND condition IS NOT NULL ORDER BY condition ASC").all() as any[];
+    const transRows = this.db.prepare("SELECT DISTINCT transmission FROM vehicles WHERE verified = 1 AND status = 'available' AND transmission IS NOT NULL ORDER BY transmission ASC").all() as any[];
+    const fuelRows = this.db.prepare("SELECT DISTINCT fuel_type FROM vehicles WHERE verified = 1 AND status = 'available' AND fuel_type IS NOT NULL ORDER BY fuel_type ASC").all() as any[];
     const boundsRow = this.db.prepare(`
       SELECT 
         MIN(price_ngn) as min_price, 
@@ -361,7 +361,7 @@ export class SqliteVehicleRepository implements IVehicleRepository {
         MIN(mileage) as min_mileage,
         MAX(mileage) as max_mileage
       FROM vehicles 
-      WHERE status != 'delisted'
+      WHERE verified = 1 AND status = 'available'
     `).get() as any;
 
     return {
@@ -2003,6 +2003,10 @@ export class SqliteNotificationRepository implements INotificationRepository {
       createdAt: r.created_at,
       sentAt: r.sent_at || undefined,
     }));
+  }
+
+  async markRead(id: string, userId: string): Promise<boolean> {
+    return this.db.prepare("UPDATE notifications SET status = 'read' WHERE id = ? AND user_id = ?").run(id, userId).changes > 0;
   }
 }
 

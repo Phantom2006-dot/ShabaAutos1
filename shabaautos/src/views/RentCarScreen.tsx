@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calendar,
-  Clock,
   MapPin,
   Search,
   SlidersHorizontal,
@@ -27,7 +26,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ScreenId } from '../types';
-import { bookVehicleRental, RentalVehicleApiRecord, fetchPublicSettings } from '../services/api';
+import { bookVehicleRental, RentalVehicleApiRecord, fetchPublicSettings, fetchRentalVehicles } from '../services/api';
+import { useAuthUser } from '../context/AuthContext';
 import bmwHeroBlack from '../assets/images/bmw_hero_coupe_1789257165323.jpg';
 import bmwHeroSilver from '../assets/images/bmw_silver_coupe_1789257180258.jpg';
 
@@ -36,17 +36,26 @@ interface RentCarScreenProps {
 }
 
 export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
+  const { user, isSignedIn } = useAuthUser();
   const [pickupLocation, setPickupLocation] = useState('Lagos - Murtala Muhammed Airport (LOS)');
-  const [pickupDate, setPickupDate] = useState(new Date().toISOString().slice(0, 10));
-  const [pickupTime, setPickupTime] = useState('10:00 AM');
+  const getToday = () => {
+    const date = new Date();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+  };
+  const [pickupDate, setPickupDate] = useState(getToday());
   const [dropoffDate, setDropoffDate] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() + 5);
-    return date.toISOString().slice(0, 10);
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
   });
-  const [dropoffTime, setDropoffTime] = useState('10:00 AM');
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedFuel, setSelectedFuel] = useState('All');
+  const [selectedTransmission, setSelectedTransmission] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [rentalCars, setRentalCars] = useState<RentalVehicleApiRecord[]>([]);
   const [isLoadingCars, setIsLoadingCars] = useState(true);
@@ -54,9 +63,9 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
 
   // Booking Modal State
   const [activeCarForBooking, setActiveCarForBooking] = useState<any | null>(null);
-  const [renterName, setRenterName] = useState('Emeka Obi');
-  const [renterPhone, setRenterPhone] = useState('+234 803 456 7890');
-  const [renterEmail, setRenterEmail] = useState('emeka.obi@gmail.com');
+  const [renterName, setRenterName] = useState('');
+  const [renterPhone, setRenterPhone] = useState('');
+  const [renterEmail, setRenterEmail] = useState('');
   const [withChauffeur, setWithChauffeur] = useState(false);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [bookingResult, setBookingResult] = useState<any | null>(null);
@@ -65,15 +74,27 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   // Hero Carousel State
   const [heroSlide, setHeroSlide] = useState(0);
   const [isHeroCarouselHovered, setIsHeroCarouselHovered] = useState(false);
-  const [chauffeurFeePerDay, setChauffeurFeePerDay] = useState<number>(25000);
+  const [chauffeurFeePerDay, setChauffeurFeePerDay] = useState<number | null>(null);
+
+  const today = getToday();
+
+  useEffect(() => {
+    if (!user) return;
+    setRenterName((current) => current || user.fullName || '');
+    setRenterPhone((current) => current || user.phone || '');
+    setRenterEmail((current) => current || user.email || '');
+  }, [user]);
 
   useEffect(() => {
     let active = true;
     fetchPublicSettings().then((settings) => {
       if (!active) return;
       const raw = settings['rental.chauffeur_fee_day']?.value;
-      if (typeof raw === 'number') setChauffeurFeePerDay(raw);
-      else if (typeof raw === 'string' && !Number.isNaN(Number(raw))) setChauffeurFeePerDay(Number(raw));
+      if (typeof raw === 'number' && Number.isFinite(raw)) setChauffeurFeePerDay(raw);
+      else if (typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))) setChauffeurFeePerDay(Number(raw));
+      else setChauffeurFeePerDay(null);
+    }).catch(() => {
+      if (active) setChauffeurFeePerDay(null);
     });
     return () => { active = false; };
   }, []);
@@ -81,17 +102,17 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   const heroSlides = [
     {
       image: bmwHeroBlack,
-      alt: 'Black Futuristic BMW Concept Coupe for Rent',
+      alt: 'Black futuristic BMW concept coupe (illustrative)',
       title: 'BMW Vision Concept Coupe',
-      subtitle: 'VIP Chauffeur & Daily Executive Rental',
-      tag: 'Executive Fleet',
+      subtitle: 'Illustrative executive rental inspiration',
+      tag: 'Featured concept',
     },
     {
       image: bmwHeroSilver,
-      alt: 'Silver BMW M-Series Sports Coupe for Rent',
+      alt: 'Silver BMW M-Series sports coupe (illustrative)',
       title: 'BMW M-Series Coupe',
-      subtitle: 'Precision Performance for Special Events',
-      tag: 'Premium Rental',
+      subtitle: 'Illustrative premium rental inspiration',
+      tag: 'Illustrative',
     },
   ];
 
@@ -106,12 +127,11 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   useEffect(() => {
     let active = true;
     setIsLoadingCars(true);
-    fetch('/api/rentals/vehicles')
-      .then(async (response) => {
-        const payload = await response.json();
-        const data = Array.isArray(payload.data) ? payload.data : [];
-        if (!active || data.length === 0) throw new Error('Rental inventory unavailable');
-        setRentalCars(data);
+    fetchRentalVehicles()
+      .then((payload) => {
+        if (!active) return;
+        if (!payload.success || !Array.isArray(payload.data)) throw new Error('Rental inventory unavailable');
+        setRentalCars(payload.data);
         setRentalLoadError('');
       })
       .catch(() => {
@@ -123,16 +143,22 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
     };
   }, []);
 
-  // Calculate rental duration in days
+  const dateValidationMessage = useMemo(() => {
+    if (!pickupDate || !dropoffDate) return 'Select both pickup and return dates.';
+    if (pickupDate < today) return 'Pickup date cannot be earlier than today.';
+    if (dropoffDate <= pickupDate) return 'Return date must be later than pickup date.';
+    return '';
+  }, [pickupDate, dropoffDate, today]);
+
+  // The current API has no date-aware availability endpoint, so dates are sent with a booking
+  // and the displayed fleet is honestly browsed by the supported local filters.
   const calculateDays = () => {
-    try {
-      const d1 = new Date(pickupDate).getTime();
-      const d2 = new Date(dropoffDate).getTime();
-      const diff = Math.ceil((d2 - d1) / (1000 * 3600 * 24));
-      return diff > 0 ? diff : 1;
-    } catch {
-      return 1;
-    }
+    if (dateValidationMessage) return 0;
+    const [startYear, startMonth, startDay] = pickupDate.split('-').map(Number);
+    const [endYear, endMonth, endDay] = dropoffDate.split('-').map(Number);
+    const start = Date.UTC(startYear, startMonth - 1, startDay);
+    const end = Date.UTC(endYear, endMonth - 1, endDay);
+    return Math.round((end - start) / (1000 * 3600 * 24));
   };
 
   const days = calculateDays();
@@ -140,11 +166,20 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   const handleStartBooking = (car: any) => {
     setActiveCarForBooking(car);
     setBookingResult(null);
+    if (!isSignedIn) onNavigate('auth');
   };
 
   const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeCarForBooking) return;
+    if (!isSignedIn) {
+      onNavigate('auth');
+      return;
+    }
+    if (dateValidationMessage || days < 1) {
+      setBookingResult({ error: dateValidationMessage || 'Please select valid rental dates.' });
+      return;
+    }
     setIsSubmittingBooking(true);
     try {
       const res = await bookVehicleRental({
@@ -170,6 +205,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
   };
 
   const handleSearchScroll = () => {
+    if (dateValidationMessage) return;
     const el = document.getElementById('rental-inventory-section');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
@@ -178,12 +214,16 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
 
   const filteredCars = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+    const locationQuery = pickupLocation.split(' - ')[0].toLowerCase();
     return rentalCars.filter((car) => {
       const matchesCategory = selectedCategory === 'All' || car.category.toLowerCase().includes(selectedCategory.toLowerCase());
       const matchesQuery = !query || `${car.name} ${car.category} ${car.fuel} ${car.location}`.toLowerCase().includes(query);
-      return matchesCategory && matchesQuery && car.status !== 'retired' && car.available !== false;
+      const matchesLocation = !locationQuery || car.location.toLowerCase().includes(locationQuery);
+      const matchesFuel = selectedFuel === 'All' || car.fuel.toLowerCase() === selectedFuel.toLowerCase();
+      const matchesTransmission = selectedTransmission === 'All' || car.transmission === selectedTransmission;
+      return matchesCategory && matchesQuery && matchesLocation && matchesFuel && matchesTransmission && car.status === 'active' && car.available !== false;
     });
-  }, [rentalCars, searchQuery, selectedCategory]);
+  }, [rentalCars, searchQuery, selectedCategory, selectedFuel, selectedTransmission, pickupLocation]);
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] shaba-screen rent-screen font-sans">
@@ -197,14 +237,15 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
         <div className="rent-mobile-booking-card">
           <div className="rent-mobile-booking-label"><Calendar className="w-4 h-4" /> Plan your trip</div>
           <label><span>Pick-up location</span><select value={pickupLocation} onChange={(e) => setPickupLocation(e.target.value)}><option>Lagos - Airport (LOS)</option><option>Lagos - Victoria Island / Lekki</option><option>Abuja - Airport (ABV)</option></select></label>
-          <div className="rent-mobile-date-grid"><label><span>Pick-up</span><input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} /></label><label><span>Return</span><input type="date" value={dropoffDate} onChange={(e) => setDropoffDate(e.target.value)} /></label></div>
-          <button type="button" onClick={handleSearchScroll}><Search className="w-4 h-4" /> Find available cars</button>
+          <div className="rent-mobile-date-grid"><label><span>Pick-up</span><input type="date" min={today} value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} /></label><label><span>Return</span><input type="date" min={pickupDate > today ? pickupDate : today} value={dropoffDate} onChange={(e) => setDropoffDate(e.target.value)} /></label></div>
+          <button type="button" onClick={handleSearchScroll}><Search className="w-4 h-4" /> Browse fleet</button>
         </div>
         <div className="rent-mobile-section-head"><div><small>CHOOSE YOUR STYLE</small><h2>Browse by category</h2></div><SlidersHorizontal className="w-4 h-4" /></div>
         <div className="rent-mobile-categories">{['All', 'SUV', 'Sedan', 'Luxury', 'Executive'].map((category) => <button type="button" key={category} onClick={() => setSelectedCategory(category)} className={selectedCategory === category ? 'is-active' : ''}>{category}</button>)}</div>
-        <div id="rent-mobile-inventory" className="rent-mobile-inventory-head"><div><small>AVAILABLE NOW</small><h2>Popular rentals</h2></div><span>{filteredCars.length} cars</span></div>
-        {isLoadingCars ? <div className="rent-mobile-loading">Loading the rental fleet...</div> : rentalLoadError ? <div className="rent-mobile-loading">{rentalLoadError}</div> : <div className="rent-mobile-car-list">{filteredCars.map((car) => <article key={car.id} className="rent-mobile-car-card"><div className="rent-mobile-car-image"><img src={car.imageUrl} alt={car.name} /><span>{car.category}</span><b><Star className="w-3 h-3 fill-current" /> {car.rating}</b></div><div className="rent-mobile-car-body"><div><h3>{car.name}</h3><p>{car.transmission} · {car.fuel} · {car.seats} seats</p></div><strong>₦{car.pricePerDayNgn.toLocaleString()}<small>/day</small></strong></div><div className="rent-mobile-car-footer"><span><ShieldCheck className="w-3 h-3" /> Insured &amp; verified</span><button type="button" onClick={() => handleStartBooking(car)}>Book now</button></div></article>)}</div>}
-        <div className="rent-mobile-trust"><CheckCircle2 className="w-5 h-5" /><div><strong>Everything you need, included</strong><small>Transparent rates, roadside support and flexible cancellation.</small></div></div>
+        <div id="rent-mobile-inventory" className="rent-mobile-inventory-head"><div><small>FLEET BROWSING</small><h2>Popular rentals</h2></div><span>{filteredCars.length} cars</span></div>
+        {dateValidationMessage && <p className="rent-mobile-loading text-amber-700">{dateValidationMessage}</p>}
+        {isLoadingCars ? <div className="rent-mobile-loading">Loading the rental fleet...</div> : rentalLoadError ? <div className="rent-mobile-loading">{rentalLoadError}</div> : <div className="rent-mobile-car-list">{filteredCars.map((car) => <article key={car.id} className="rent-mobile-car-card"><div className="rent-mobile-car-image"><img src={car.imageUrl} alt={car.name} /><span>{car.category}</span><b><Star className="w-3 h-3 fill-current" /> {car.rating}</b></div><div className="rent-mobile-car-body"><div><h3>{car.name}</h3><p>{car.transmission} · {car.fuel} · {car.seats} seats</p></div><strong>₦{car.pricePerDayNgn.toLocaleString()}<small>/day</small></strong></div><div className="rent-mobile-car-footer"><span><ShieldCheck className="w-3 h-3" /> Insurance options available</span><button type="button" onClick={() => handleStartBooking(car)}>Book now</button></div></article>)}</div>}
+        <div className="rent-mobile-trust"><CheckCircle2 className="w-5 h-5" /><div><strong>Clear rental terms</strong><small>Transparent rates and support; cancellation terms apply.</small></div></div>
       </section>
       {/* Daylight Hero Section matching Web8.png */}
       <section className="relative overflow-hidden bg-gradient-to-b from-[#eef3f0] to-[#f4f7f5] pt-10 sm:pt-14 lg:pt-16 pb-16 sm:pb-20 border-b border-slate-200/80">
@@ -228,7 +269,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                 for Any Occasion
               </h1>
               <p className="text-sm sm:text-base text-slate-600 font-medium">
-                Affordable rates, flexible plans and quality vehicles delivered to you.
+                Browse current fleet records, compare rates and request pickup at a supported hub.
               </p>
 
               {/* 3 Badges matching Web8.png */}
@@ -249,10 +290,10 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   <ShieldCheck className="w-4 h-4 text-[#0e7c3a] flex-shrink-0" />
                   <div className="text-left">
                     <span className="text-xs font-bold text-slate-900 block leading-tight">
-                      Insurance Included
+                      Insurance Options Available
                     </span>
                     <span className="text-[10px] text-slate-500 font-medium block">
-                      Your safety is our priority
+                      Coverage and pricing confirmed in your quote
                     </span>
                   </div>
                 </div>
@@ -261,10 +302,10 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   <MapPin className="w-4 h-4 text-[#0e7c3a] flex-shrink-0" />
                   <div className="text-left">
                     <span className="text-xs font-bold text-slate-900 block leading-tight">
-                      Doorstep Delivery
+                      Supported Pickup Hubs
                     </span>
                     <span className="text-[10px] text-slate-500 font-medium block">
-                      We bring the car to you
+                      Choose a location shown in the search form
                     </span>
                   </div>
                 </div>
@@ -421,28 +462,10 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                 <input
                   type="date"
                   value={pickupDate}
+                  min={today}
                   onChange={(e) => setPickupDate(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#0e7c3a]/20"
                 />
-              </div>
-
-              {/* Pick-up Time */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Pick-up Time
-                </label>
-                <select
-                  value={pickupTime}
-                  onChange={(e) => setPickupTime(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#0e7c3a]/20"
-                >
-                  <option>08:00 AM</option>
-                  <option>10:00 AM</option>
-                  <option>12:00 PM</option>
-                  <option>02:00 PM</option>
-                  <option>04:00 PM</option>
-                  <option>06:00 PM</option>
-                </select>
               </div>
 
               {/* Drop-off Date */}
@@ -453,6 +476,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                 <input
                   type="date"
                   value={dropoffDate}
+                  min={pickupDate > today ? pickupDate : today}
                   onChange={(e) => setDropoffDate(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-[#0e7c3a]/20"
                 />
@@ -466,12 +490,17 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   className="w-full bg-[#12492f] hover:bg-[#0b3622] text-white font-bold py-2.5 px-4 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer h-[42px]"
                 >
                   <Search className="w-4 h-4" />
-                  Search Cars
+                  Browse Fleet
                 </button>
               </div>
             </div>
 
-            {/* More Filters Toggle */}
+            {dateValidationMessage && (
+              <p className="mt-3 text-xs font-semibold text-amber-700" role="alert">{dateValidationMessage}</p>
+            )}
+            <p className="mt-3 text-[11px] text-slate-500">Dates are included in your reservation request; date-specific availability is confirmed by the fleet team.</p>
+
+            {/* Functional extra filters */}
             <div className="mt-3.5 flex justify-end">
               <button
                 type="button"
@@ -479,9 +508,28 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                 className="text-xs font-semibold text-slate-600 hover:text-[#0e7c3a] flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
-                {showMoreFilters ? 'Fewer Filters' : 'More Filters (Chauffeur, SUV, Fuel)'}
+                {showMoreFilters ? 'Fewer Filters' : 'More Filters'}
               </button>
             </div>
+            {showMoreFilters && (
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-xs font-bold text-slate-700">
+                  Fuel type
+                  <select value={selectedFuel} onChange={(e) => setSelectedFuel(e.target.value)} className="mt-1 w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-900">
+                    <option value="All">All fuel types</option>
+                    {[...new Set(rentalCars.map((car) => car.fuel))].map((fuel) => <option key={fuel} value={fuel}>{fuel}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-bold text-slate-700">
+                  Transmission
+                  <select value={selectedTransmission} onChange={(e) => setSelectedTransmission(e.target.value)} className="mt-1 w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium text-slate-900">
+                    <option value="All">All transmissions</option>
+                    <option value="Automatic">Automatic</option>
+                    <option value="Manual">Manual</option>
+                  </select>
+                </label>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -494,7 +542,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
               Popular Rental Cars
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Maintained to the highest standard with chauffeur and self-drive options
+              Browse active fleet records with chauffeur and self-drive options
             </p>
           </div>
 
@@ -503,6 +551,8 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
             onClick={() => {
               setSearchQuery('');
               setSelectedCategory('All');
+              setSelectedFuel('All');
+              setSelectedTransmission('All');
               handleSearchScroll();
             }}
             className="text-xs sm:text-sm font-bold text-[#0e7c3a] hover:text-[#0b5c2a] flex items-center gap-1 group cursor-pointer"
@@ -569,7 +619,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                     </span>
                     <span className="flex items-center gap-1 text-[#0e7c3a] font-bold">
                       <ShieldCheck className="w-3 h-3" />
-                      Insured
+                      Insurance options
                     </span>
                   </div>
                 </div>
@@ -606,7 +656,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
           </div>
           <div className="flex items-center gap-2.5">
             <Calendar className="w-4 h-4 text-[#0e7c3a] flex-shrink-0" />
-            <span className="text-xs font-bold text-slate-800">Easy Booking &amp; Cancellation</span>
+            <span className="text-xs font-bold text-slate-800">Booking support &amp; terms</span>
           </div>
           <div className="flex items-center gap-2.5">
             <Headphones className="w-4 h-4 text-[#0e7c3a] flex-shrink-0" />
@@ -677,20 +727,25 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                 </div>
                 <h3 className="text-lg font-black text-gray-900">Rental Reservation Confirmed!</h3>
 
-                <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-xs text-emerald-900 font-bold mx-auto">
-                  <span>Reservation ID: <span className="font-mono text-emerald-700">{bookingResult.id || 'RNT-74921'}</span></span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(bookingResult.id || 'RNT-74921');
-                      setCopiedBookingId(true);
-                      setTimeout(() => setCopiedBookingId(false), 2000);
-                    }}
-                    className="p-1 hover:bg-emerald-200 rounded text-emerald-800 cursor-pointer"
-                  >
-                    {copiedBookingId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
+                {bookingResult.id ? (
+                  <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-xs text-emerald-900 font-bold mx-auto">
+                    <span>Reservation reference: <span className="font-mono text-emerald-700">{bookingResult.id}</span></span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(bookingResult.id);
+                        setCopiedBookingId(true);
+                        setTimeout(() => setCopiedBookingId(false), 2000);
+                      }}
+                      className="p-1 hover:bg-emerald-200 rounded text-emerald-800 cursor-pointer"
+                      aria-label="Copy reservation reference"
+                    >
+                      {copiedBookingId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold text-amber-700">Reservation recorded, but the server did not return a reference. Please contact support with your account details.</p>
+                )}
 
                 <div className="bg-gray-50 rounded-xl p-4 text-left text-xs space-y-2 border border-gray-200">
                   <div className="flex justify-between font-medium">
@@ -699,11 +754,11 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   </div>
                   <div className="flex justify-between font-medium">
                     <span className="text-gray-500">Pick-up Date:</span>
-                    <span className="text-gray-800">{pickupDate} ({pickupTime})</span>
+                    <span className="text-gray-800">{pickupDate}</span>
                   </div>
                   <div className="flex justify-between font-medium">
                     <span className="text-gray-500">Drop-off Date:</span>
-                    <span className="text-gray-800">{dropoffDate} ({dropoffTime})</span>
+                    <span className="text-gray-800">{dropoffDate}</span>
                   </div>
                   <div className="flex justify-between font-medium">
                     <span className="text-gray-500">Pickup Location:</span>
@@ -711,12 +766,12 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   </div>
                   <div className="flex justify-between font-medium border-t border-gray-200 pt-2 text-sm font-black text-[#0e7c3a]">
                     <span>Total Cost ({days} {days === 1 ? 'day' : 'days'}):</span>
-                    <span>₦{(bookingResult.totalNgn || ((activeCarForBooking.pricePerDayNgn + (withChauffeur ? chauffeurFeePerDay : 0)) * days)).toLocaleString()}</span>
+                    <span>{typeof bookingResult.totalNgn === 'number' ? `₦${bookingResult.totalNgn.toLocaleString()}` : 'See confirmed quote'}</span>
                   </div>
                 </div>
 
                 <p className="text-xs text-gray-500">
-                  A confirmation SMS &amp; voucher have been dispatched to {renterPhone}. Our concierge will contact you 2 hours prior to pickup.
+                  Your reservation has been recorded. A fleet coordinator will contact you with handover details; changes and cancellations are subject to the applicable rental terms.
                 </p>
 
                 <button
@@ -751,6 +806,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                     <input
                       type="date"
                       value={pickupDate}
+                      min={today}
                       onChange={(e) => setPickupDate(e.target.value)}
                       className="w-full text-xs bg-gray-50 border border-gray-300 rounded-lg p-2 font-medium"
                     />
@@ -760,6 +816,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                     <input
                       type="date"
                       value={dropoffDate}
+                      min={pickupDate > today ? pickupDate : today}
                       onChange={(e) => setDropoffDate(e.target.value)}
                       className="w-full text-xs bg-gray-50 border border-gray-300 rounded-lg p-2 font-medium"
                     />
@@ -791,7 +848,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                   />
                   <div className="flex-1">
                     <span className="text-xs font-bold text-gray-900 block">Include Professional Chauffeur Driver</span>
-                    <span className="text-[10px] text-gray-600 block">+₦15,000 / day (vetted, uniformed, executive security trained)</span>
+                    <span className="text-[10px] text-gray-600 block">{chauffeurFeePerDay === null ? 'Price confirmed in quote' : `+₦${chauffeurFeePerDay.toLocaleString()} / day`}</span>
                   </div>
                 </label>
 
@@ -833,27 +890,34 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                 {/* Total Cost Breakdown */}
                 <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-xs space-y-1">
                   <div className="flex justify-between text-gray-600">
-                    <span>Base rate ({days} days):</span>
-                    <span>₦{(activeCarForBooking.pricePerDayNgn * days).toLocaleString()}</span>
+                    <span>Base rate ({days > 0 ? `${days} ${days === 1 ? 'day' : 'days'}` : 'valid dates required'}):</span>
+                    <span>{days > 0 ? `₦${(activeCarForBooking.pricePerDayNgn * days).toLocaleString()}` : '—'}</span>
                   </div>
-                  {withChauffeur && (
+                  {withChauffeur && chauffeurFeePerDay !== null && (
                     <div className="flex justify-between text-gray-600">
-                      <span>Chauffeur fee ({days} days):</span>
-                      <span>₦{(chauffeurFeePerDay * days).toLocaleString()}</span>
+                      <span>Chauffeur fee ({days > 0 ? `${days} ${days === 1 ? 'day' : 'days'}` : 'valid dates required'}):</span>
+                      <span>{days > 0 ? `₦${(chauffeurFeePerDay * days).toLocaleString()}` : '—'}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-black text-sm text-gray-900 pt-2 border-t border-gray-200">
                     <span>Total Rental Amount:</span>
                     <span className="text-[#0e7c3a]">
-                      ₦{((activeCarForBooking.pricePerDayNgn + (withChauffeur ? chauffeurFeePerDay : 0)) * days).toLocaleString()}
+                      {days < 1 ? 'Select valid dates' : withChauffeur && chauffeurFeePerDay === null ? 'Base rate + quoted add-ons' : `₦${((activeCarForBooking.pricePerDayNgn + (withChauffeur ? chauffeurFeePerDay || 0 : 0)) * days).toLocaleString()}`}
                     </span>
                   </div>
                 </div>
 
+                {!isSignedIn && (
+                  <p className="text-xs font-semibold text-amber-700" role="alert">Sign in is required to submit this reservation. Your selected vehicle and form details will remain in this screen while you sign in.</p>
+                )}
+                {dateValidationMessage && (
+                  <p className="text-xs font-semibold text-amber-700" role="alert">{dateValidationMessage}</p>
+                )}
+
                 {/* Submit Action */}
                 <button
                   type="submit"
-                  disabled={isSubmittingBooking}
+                  disabled={isSubmittingBooking || Boolean(dateValidationMessage) || !isSignedIn}
                   className="w-full py-3 bg-[#12492f] hover:bg-[#0b3622] disabled:bg-gray-400 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {isSubmittingBooking ? (
@@ -862,7 +926,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
                       <span>Confirming Reservation...</span>
                     </>
                   ) : (
-                    <span>Confirm &amp; Book Vehicle (Pay at Pickup)</span>
+                    <span>{isSignedIn ? 'Confirm &amp; Book Vehicle (Pay at Pickup)' : 'Sign in to continue'}</span>
                   )}
                 </button>
               </form>

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { fetchMySavedVehicles, fetchMyComparison } from './services/api';
+import { fetchMySavedVehicles, fetchMyComparison, removeSavedVehicleFromAccount, saveVehicleToAccount } from './services/api';
+import { useAuthUser } from './context/AuthContext';
 import { Car, ScreenId } from './types';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -20,16 +21,24 @@ import { MobileBottomNav } from './components/MobileBottomNav';
 import { MobileSidebar } from './components/MobileSidebar';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenId>('home');
-  const [selectedCarId, setSelectedCarId] = useState<string>('car-1');
+  const initialCarId = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('carId');
+  const [currentScreen, setCurrentScreen] = useState<ScreenId>(initialCarId ? 'car-details' : 'home');
+  const [selectedCarId, setSelectedCarId] = useState<string>(initialCarId || '');
   const [selectedCar, setSelectedCar] = useState<Car | undefined>();
   const [previousScreen, setPreviousScreen] = useState<ScreenId>('home');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [savedCarIds, setSavedCarIds] = useState<string[]>([]);
   const [compareCount, setCompareCount] = useState(0);
+  const [savedError, setSavedError] = useState('');
+  const { user, isSignedIn, isLoaded } = useAuthUser();
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn || !user) {
+      setSavedCarIds([]);
+      setCompareCount(0);
+      return;
+    }
     let active = true;
     fetchMySavedVehicles().then((res) => {
       if (!active || !res.success) return;
@@ -40,25 +49,36 @@ export default function App() {
       setCompareCount(Array.isArray(res.vehicles) ? res.vehicles.length : 0);
     });
     return () => { active = false; };
-  }, []);
+  }, [isLoaded, isSignedIn, user?.id, currentScreen]);
 
-  const handleToggleSaveCar = (carId: string) => {
-    setSavedCarIds((prev) =>
-      prev.includes(carId) ? prev.filter((id) => id !== carId) : [...prev, carId]
-    );
+  const handleToggleSaveCar = async (carId: string) => {
+    if (!isSignedIn) { handleNavigate('auth'); return; }
+    const wasSaved = savedCarIds.includes(carId);
+    setSavedError('');
+    setSavedCarIds((prev) => wasSaved ? prev.filter((id) => id !== carId) : [...prev, carId]);
+    try {
+      const result = wasSaved ? await removeSavedVehicleFromAccount(carId) : await saveVehicleToAccount(carId);
+      if (!result.success) throw new Error(result.message || 'Could not update saved vehicles.');
+      if (Array.isArray(result.savedCarIds)) setSavedCarIds(result.savedCarIds);
+    } catch (error) {
+      setSavedCarIds((prev) => wasSaved ? [...new Set([...prev, carId])] : prev.filter((id) => id !== carId));
+      setSavedError(error instanceof Error ? error.message : 'Could not update saved vehicles.');
+    }
   };
 
   const handleNavigate = (screen: ScreenId) => {
     setMobileMenuOpen(false);
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('carId')) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
     if (screen === 'car-details-rav4') {
-      setSelectedCarId('rav4-2022');
-      setCurrentScreen('car-details');
+      window.history.replaceState(null, '', `${window.location.pathname}?search=RAV4`);
+      setCurrentScreen('buy-cars');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     if (screen === 'car-details') {
-      setSelectedCarId('car-1');
-      setCurrentScreen('car-details');
+      setCurrentScreen(selectedCarId ? 'car-details' : 'buy-cars');
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -74,11 +94,13 @@ export default function App() {
     setSelectedCarId(carId);
     setSelectedCar(car);
     setCurrentScreen('car-details');
+    window.history.replaceState(null, '', `${window.location.pathname}?carId=${encodeURIComponent(carId)}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-x-clip min-h-screen flex flex-col bg-[#f8f9fa] text-gray-900 font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
+      {savedError && <div role="alert" className="fixed right-4 top-24 z-[90] max-w-sm rounded-xl border border-red-200 bg-white p-4 text-sm font-semibold text-red-800 shadow-lg">{savedError}<button type="button" className="ml-3 text-xs underline" onClick={() => setSavedError('')}>Dismiss</button></div>}
       {/* Persistent Global Header with Mockup Switcher */}
       <Header
         currentScreen={currentScreen}
@@ -142,7 +164,7 @@ export default function App() {
         )}
 
         {currentScreen === 'saved-compare' && (
-          <SavedCompareScreen onNavigate={handleNavigate} />
+          <SavedCompareScreen onNavigate={handleNavigate} onSelectCar={handleSelectCar} />
         )}
 
         {currentScreen === 'order-tracking' && (

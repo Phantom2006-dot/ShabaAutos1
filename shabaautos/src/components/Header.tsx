@@ -28,6 +28,8 @@ import {
 import { ScreenId } from '../types';
 import { ShabaAutosLogo } from './ShabaAutosLogo';
 import { useAuthUser } from '../context/AuthContext';
+import { fetchVehiclesWithPagination } from '../services/api';
+import { useBusinessContact } from '../hooks/useBusinessContact';
 
 interface HeaderProps {
   currentScreen: ScreenId;
@@ -52,6 +54,20 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { user, isSignedIn, signOut, isDemoMode, switchDemoRole } = useAuthUser();
   const isLoggedIn = isSignedIn || Boolean(user) || propIsLoggedIn;
+  const { phone } = useBusinessContact();
+  const normalizedPhone = phone.replace(/[^\d+]/g, '');
+  const phoneHref = normalizedPhone ? `tel:${normalizedPhone}` : '';
+  const [inventoryTotal, setInventoryTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchVehiclesWithPagination({ page: 1, pageSize: 1 }).then((response) => {
+      if (active && response.success && Number.isFinite(response.total)) {
+        setInventoryTotal(response.total);
+      }
+    });
+    return () => { active = false; };
+  }, []);
 
   const [internalMenuOpen, setInternalMenuOpen] = useState(false);
   const isMenuOpen = externalMenuOpen !== undefined ? externalMenuOpen : internalMenuOpen;
@@ -133,6 +149,13 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const navigateToInventory = (filters: Record<string, string>) => {
+    const params = new URLSearchParams(filters);
+    const query = params.toString();
+    window.history.pushState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+    handleNavClick('buy-cars');
+  };
+
   const renderAccountPanel = (dropdownName: string) => {
     if (activeDropdown !== dropdownName || !isLoggedIn || !user) return null;
 
@@ -169,7 +192,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="shabaautos-dropdown-item"
           >
             <Clock size={14} className="text-[#158047] shrink-0" />
-            <span>Track Order (SA-IMP-00078)</span>
+            <span>Track an order</span>
           </button>
 
           <button
@@ -329,9 +352,11 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="text-[11px] font-bold text-[#12492f] uppercase tracking-wider">
                     Verified Car Inventory
                   </span>
-                  <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-1.5 py-0.5 rounded">
-                    56 Available
-                  </span>
+                  {inventoryTotal !== null && (
+                    <span className="text-[10px] bg-emerald-100 text-[#12492f] font-bold px-1.5 py-0.5 rounded">
+                      {inventoryTotal} Available
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-0.5">
@@ -345,13 +370,13 @@ export const Header: React.FC<HeaderProps> = ({
                     <div>
                       <div className="font-bold text-[#26372c]">All Available Cars</div>
                       <div className="text-[10px] text-gray-500 font-normal">
-                        Browse full inventory with 150-point inspection
+                        Browse current listings and review details
                       </div>
                     </div>
                   </button>
 
                   <button
-                    onClick={() => handleNavClick('car-details-rav4')}
+                    onClick={() => navigateToInventory({ bodyType: 'SUV' })}
                     className="shabaautos-dropdown-item group"
                   >
                     <div className="w-7 h-7 rounded-md bg-emerald-50 text-[#158047] flex items-center justify-center shrink-0 group-hover:bg-[#12492f] group-hover:text-white transition-colors">
@@ -366,7 +391,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
 
                   <button
-                    onClick={() => handleNavClick('car-details')}
+                    onClick={() => navigateToInventory({ bodyType: 'Sedan' })}
                     className="shabaautos-dropdown-item group"
                   >
                     <div className="w-7 h-7 rounded-md bg-emerald-50 text-[#158047] flex items-center justify-center shrink-0 group-hover:bg-[#12492f] group-hover:text-white transition-colors">
@@ -580,7 +605,7 @@ export const Header: React.FC<HeaderProps> = ({
                       className="shabaautos-dropdown-item text-[#12492f] font-bold justify-between"
                     >
                       <span className="flex items-center gap-2">
-                        <Clock size={14} /> Track Existing Order (SA-IMP-00078)
+                        <Clock size={14} /> Track an existing order
                       </span>
                       <ChevronRight size={13} />
                     </button>
@@ -640,7 +665,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <div>
                       <div className="font-bold text-[#26372c]">Sell Your Car</div>
                       <div className="text-[10px] text-gray-500 font-normal">
-                        Free inspection & instant payout
+                        Request an inspection and valuation
                       </div>
                     </div>
                   </button>
@@ -668,15 +693,17 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Desktop Header Contact, Saved Wishlist & Sign In / Account Dropdown */}
         <div className="shabaautos-header-contact hidden lg:flex items-center">
           {/* Phone Contact */}
-          <a
-            href="tel:+2348123456789"
-            className="shabaautos-contact-btn"
-            title="Call +234 812 345 6789"
-          >
-            <Phone size={13} className="text-[#158047]" />
-            <span className="hidden xl:inline">+234 812 345 6789</span>
-            <span className="inline xl:hidden text-[11px] font-bold">Call</span>
-          </a>
+          {phone && (
+            <a
+              href={phoneHref}
+              className="shabaautos-contact-btn"
+              title={`Call ${phone}`}
+            >
+              <Phone size={13} className="text-[#158047]" />
+              <span className="hidden xl:inline">{phone}</span>
+              <span className="inline xl:hidden text-[11px] font-bold">Call</span>
+            </a>
+          )}
 
           {/* Wishlist Button */}
           <button

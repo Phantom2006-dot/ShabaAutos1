@@ -1,13 +1,26 @@
 import React from 'react';
-import { Phone, Mail, MapPin, ShieldCheck, CheckCircle2, Award, Clock } from 'lucide-react';
+import { Phone, Mail, ShieldCheck, CheckCircle2, Award, Clock } from 'lucide-react';
 import { ScreenId } from '../types';
 import { ShabaAutosLogo } from './ShabaAutosLogo';
+import { useBusinessContact } from '../hooks/useBusinessContact';
 
 interface FooterProps {
   onNavigate: (screen: ScreenId) => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+  const { phone, email, address } = useBusinessContact();
+  const emailHref = email ? `mailto:${encodeURIComponent(email)}` : '';
+  const inspectionEmailHref = email
+    ? `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Vehicle inspection records')}`
+    : '';
+  const enquiryEmailHref = email
+    ? `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('ShabaAutos vehicle enquiry')}`
+    : '';
+  const directionsHref = address
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`
+    : '';
+
   return (
     <footer className="bg-[#0b1310] text-gray-300">
       {/* Upper Features Strip */}
@@ -17,29 +30,29 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             <div className="flex items-center gap-3">
               <ShieldCheck className="w-5 h-5 text-emerald-400 flex-shrink-0" />
               <div>
-                <p className="font-bold text-white">7-Day Return Policy</p>
-                <p className="text-gray-400">100% peace of mind guarantee</p>
+                <p className="font-bold text-white">Return terms</p>
+                <p className="text-gray-400">Ask about applicable return terms</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <Award className="w-5 h-5 text-emerald-400 flex-shrink-0" />
               <div>
-                <p className="font-bold text-white">150+ Inspection Points</p>
-                <p className="text-gray-400">Certified by top engineers</p>
+                <p className="font-bold text-white">Vehicle inspection information</p>
+                <p className="text-gray-400">Scope and evidence vary by vehicle</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
               <div>
-                <p className="font-bold text-white">Customs Cleared</p>
-                <p className="text-gray-400">All duty documents authentic</p>
+                <p className="font-bold text-white">Import documentation</p>
+                <p className="text-gray-400">Documentation can be reviewed with your quote</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <Clock className="w-5 h-5 text-emerald-400 flex-shrink-0" />
               <div>
-                <p className="font-bold text-white">Fast Doorstep Delivery</p>
-                <p className="text-gray-400">Across all 36 Nigerian states</p>
+                <p className="font-bold text-white">Delivery options</p>
+                <p className="text-gray-400">Confirm destination, timing and fees</p>
               </div>
             </div>
           </div>
@@ -55,21 +68,31 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               <ShabaAutosLogo variant="dark" size="lg" showDivider={false} />
             </div>
             <p className="text-xs text-gray-400 leading-relaxed max-w-sm">
-              Nigeria&apos;s most trusted automotive marketplace. Buy verified local and foreign used cars, rent vehicles for personal or corporate travel, or import clean-title cars directly from the USA with zero hassle.
+              An automotive marketplace serving customers in Nigeria. Browse local and foreign used cars, rent vehicles for personal or corporate travel, or request guided import support from the USA.
             </p>
             <div className="space-y-2 text-xs text-gray-400 pt-2">
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-emerald-400" />
-                <span>Admiralty Way, Lekki Phase 1, Lagos, Nigeria</span>
-              </div>
-              <div className="flex items-center gap-2">
+              {phone && <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-emerald-400" />
-                <span>+234 812 345 6789 / +234 810 123 4567</span>
-              </div>
-              <div className="flex items-center gap-2">
+                <span>{phone}</span>
+              </div>}
+              {email && <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-emerald-400" />
-                <span>support@shabaautos.com</span>
-              </div>
+                <a href={emailHref} className="hover:text-emerald-400 transition-colors">{email}</a>
+              </div>}
+              {address && <div className="space-y-1">
+                <div>{address}</div>
+                <a
+                  href={directionsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block hover:text-emerald-400 transition-colors"
+                >
+                  Business location
+                </a>
+              </div>}
+              {!phone && !email && !address && (
+                <p>Business contact details are being confirmed. Use request forms on site to connect.</p>
+              )}
             </div>
           </div>
 
@@ -82,7 +105,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                   onClick={() => onNavigate('buy-cars')}
                   className="hover:text-emerald-400 transition-colors text-left"
                 >
-                  Buy Verified Cars
+                  Browse Available Cars
                 </button>
               </li>
               <li>
@@ -156,44 +179,42 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                   Request Import Quote
                 </button>
               </li>
-              <li>
-                <a href="#inspection" className="hover:text-emerald-400 transition-colors">
-                  Vehicle Inspection Reports
+              {email && <li>
+                <a href={inspectionEmailHref} className="hover:text-emerald-400 transition-colors">
+                  Ask about inspection records
                 </a>
-              </li>
+              </li>}
             </ul>
           </div>
 
-          {/* Col 4: Newsletter */}
+          {/* Col 4: Contact alternative */}
           <div>
-            <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">Stay Updated</h4>
+            <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">Stay in touch</h4>
             <p className="text-xs text-gray-400 mb-3">
-              Get notified of new car arrivals and special US import price drops.
+              Have a question about a vehicle or a new arrival? Contact the team directly.
             </p>
-            <div className="space-y-2">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="w-full px-3 py-2 text-xs bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-hidden focus:border-emerald-500"
-              />
-              <button
-                type="button"
-                className="w-full py-2 bg-[#0a502c] hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors"
+            {email ? (
+              <a
+                href={enquiryEmailHref}
+                className="inline-flex w-full items-center justify-center gap-2 py-2 bg-[#0a502c] hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors"
               >
-                Subscribe
-              </button>
-            </div>
+                <Mail className="w-3.5 h-3.5" />
+                Contact support
+              </a>
+            ) : (
+              <p className="text-xs text-gray-400">Business contact details are being confirmed. Use request forms on site to connect.</p>
+            )}
           </div>
         </div>
 
         {/* Bottom copyright */}
         <div className="mt-12 pt-6 pb-6 md:pb-0 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-4">
           <p>© {new Date().getFullYear()} ShabaAutos Nigeria Ltd. All rights reserved.</p>
-          <div className="flex gap-4">
-            <span className="hover:text-gray-400 cursor-pointer">Privacy Policy</span>
-            <span className="hover:text-gray-400 cursor-pointer">Terms of Service</span>
-            <span className="hover:text-gray-400 cursor-pointer">Vehicle Disclaimer</span>
-          </div>
+          {email && (
+            <div className="flex items-center gap-4">
+              <a href={emailHref} className="hover:text-gray-400">Contact support</a>
+            </div>
+          )}
         </div>
       </div>
     </footer>

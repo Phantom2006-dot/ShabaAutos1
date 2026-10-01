@@ -10,6 +10,46 @@ function db() {
   return getDatabaseService();
 }
 
+function validNumber(value: unknown, min: number, max: number): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max;
+}
+
+function validImageUrl(value: string): boolean {
+  return /^https:\/\//i.test(value) || /^\/uploads\/[a-f0-9-]+\.(jpg|png|webp)$/i.test(value);
+}
+
+router.get('/vehicles/:id/images', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
+  try {
+    if (!await db().vehicles.findById(req.params.id)) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
+    res.json({ success: true, data: await db().vehicles.getImages(req.params.id) });
+  } catch (err: any) { res.status(500).json({ success: false, message: err.message }); }
+});
+
+// Upload only to an existing draft/listing: no successful response can leave an unattached asset.
+router.post('/vehicles/:id/images/upload', requireAuth, requireRole(['staff', 'admin']), uploadImages.array('images', 10), async (req: Request, res: Response) => {
+  const stored: UploadedImageResult[] = [];
+  try {
+    const vehicle = await db().vehicles.findById(req.params.id);
+    if (!vehicle) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
+    const files = (req.files || []) as Express.Multer.File[];
+    if (!files.length) return res.status(400).json({ success: false, message: 'Select at least one image.' });
+    validateImageBuffers(files);
+    const existing = await db().vehicles.getImages(vehicle.id);
+    for (const file of files) stored.push(await saveUploadedImage(file.buffer, file.mimetype));
+    const rows = await db().vehicles.addImages(vehicle.id, stored.map((item, index) => ({
+      ...item,
+      url: item.url.startsWith('/uploads/') ? `${req.protocol}://${req.get('host')}${item.url}` : item.url,
+      displayOrder: existing.length + index,
+      isPrimary: existing.length === 0 && index === 0,
+    })));
+    await db().audit.record({ actorUserId: req.user!.id, actorRole: req.user!.role as UserRole, action: 'vehicle.upload_images', resourceType: 'vehicle', resourceId: vehicle.id, changesJson: JSON.stringify({ imageIds: rows.map((row) => row.id) }) });
+    res.status(201).json({ success: true, data: rows });
+  } catch (err: any) {
+    await Promise.all(stored.map((item) => removeStoredImage(item.url, item.publicId)));
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
 // POST /api/ops/uploads/images — staff/admin multi-image upload → public URLs
 // (with Cloudinary metadata, persisted once attached to a vehicle).
 router.post(
@@ -55,6 +95,18 @@ router.patch(
   async (req: Request, res: Response) => {
     try {
       const b = req.body || {};
+      const current = await db().vehicles.findById(req.params.id);
+      if (!current) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
+      if (b.status !== undefined && req.user!.role !== 'admin') return res.status(403).json({ success: false, message: 'Only an administrator may change lifecycle status.' });
+      if (b.verified !== undefined) return res.status(400).json({ success: false, message: 'Use the administrator approval action to publish a listing.' });
+      if (b.inspectionPassed !== undefined) return res.status(400).json({ success: false, message: 'Inspection status requires a separate evidence-backed workflow.' });
+      if (b.cleanTitle === true) return res.status(400).json({ success: false, message: 'A clean-title claim requires verified documentation.' });
+      if (b.year !== undefined && !validNumber(b.year, 1886, new Date().getFullYear() + 1)) return res.status(400).json({ success: false, message: 'Enter a valid model year.' });
+      if (b.priceNgn !== undefined && !validNumber(b.priceNgn, 1, 100000000000)) return res.status(400).json({ success: false, message: 'Enter a valid positive price.' });
+      if (b.mileage !== undefined && !validNumber(b.mileage, 0, 10000000)) return res.status(400).json({ success: false, message: 'Enter valid non-negative mileage.' });
+      if (b.seats !== undefined && !validNumber(b.seats, 1, 80)) return res.status(400).json({ success: false, message: 'Enter a valid seat count.' });
+      if (b.status !== undefined && !['available', 'reserved', 'sold', 'delisted'].includes(b.status)) return res.status(400).json({ success: false, message: 'Invalid vehicle status.' });
+      if (Array.isArray(b.images) && b.images.some((item: unknown) => !validImageUrl(typeof item === 'string' ? item.trim() : String((item as any)?.url || '').trim()))) return res.status(400).json({ success: false, message: 'Use valid HTTPS image URLs or uploaded images.' });
       const updates: Record<string, unknown> = {};
       const strFields = ['make', 'model', 'trim', 'location', 'city', 'state', 'condition', 'bodyType', 'engine', 'driveType', 'color', 'description', 'stockId'] as const;
       for (const f of strFields) {
@@ -69,10 +121,9 @@ router.patch(
       if (b.fuelType !== undefined) updates.fuelType = ['Diesel', 'Hybrid', 'Electric'].includes(b.fuelType) ? b.fuelType : 'Petrol';
       if (b.seats !== undefined) updates.seats = Number(b.seats) || 5;
       if (Array.isArray(b.features)) updates.features = b.features.map(String);
-      if (b.cleanTitle !== undefined) updates.cleanTitle = Boolean(b.cleanTitle);
-      if (b.inspectionPassed !== undefined) updates.inspectionPassed = Boolean(b.inspectionPassed);
-      if (b.status !== undefined) updates.status = ['available', 'reserved', 'sold', 'delisted'].includes(b.status) ? b.status : 'available';
-      if (b.verified !== undefined && req.user!.role === 'admin') updates.verified = Boolean(b.verified);
+      if (b.cleanTitle === false) updates.cleanTitle = false;
+      if (b.status !== undefined) updates.status = b.status;
+      if (current.verified && ['make', 'model', 'year', 'priceNgn', 'mileage', 'stockId', 'location', 'condition', 'bodyType'].some((field) => b[field] !== undefined && String(b[field]) !== String((current as any)[field]))) updates.verified = false;
 
       const updated = await db().vehicles.update(req.params.id, updates);
       if (!updated) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
@@ -98,10 +149,11 @@ router.patch(
             };
           })
           .filter((img) => img.url);
-        if (images.length > 0) {
-          await db().vehicles.setImages(req.params.id, []);
-          await db().vehicles.addImages(req.params.id, images);
-        }
+        if (images.some((image) => !validImageUrl(image.url))) return res.status(400).json({ success: false, message: 'Use valid HTTPS image URLs or uploaded images.' });
+        const previous = await db().vehicles.getImages(req.params.id);
+        await db().vehicles.setImages(req.params.id, []);
+        if (images.length > 0) await db().vehicles.addImages(req.params.id, images);
+        await Promise.all(previous.filter((old) => !images.some((image) => image.url === old.url)).map((old) => removeStoredImage(old.url, old.publicId)));
       }
 
       await db().audit.record({
@@ -121,11 +173,11 @@ router.patch(
   }
 );
 
-// DELETE /api/ops/vehicles/:id — staff/admin permanently delete (FK cascade removes vehicle_images.
+// DELETE /api/ops/vehicles/:id — admin-only permanent deletion (FK cascade removes vehicle_images).
 router.delete(
   '/vehicles/:id',
   requireAuth,
-  requireRole(['staff', 'admin']),
+  requireRole('admin'),
   async (req: Request, res: Response) => {
     try {
       const current = await db().vehicles.findById(req.params.id);
@@ -210,6 +262,10 @@ router.patch(
   requireRole(['staff', 'admin']),
   async (req: Request, res: Response) => {
     try {
+      if (!await db().vehicles.findById(req.params.id)) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
+      const owned = (await db().vehicles.getImages(req.params.id)).find((item) => item.id === req.params.imageId);
+      if (!owned) return res.status(404).json({ success: false, message: 'Image not found for this vehicle.' });
+      if (req.body?.displayOrder !== undefined && (!Number.isInteger(req.body.displayOrder) || req.body.displayOrder < 0)) return res.status(400).json({ success: false, message: 'Invalid image order.' });
       const image = await db().vehicles.updateImage(req.params.imageId, {
         isPrimary: req.body?.isPrimary !== undefined ? Boolean(req.body.isPrimary) : undefined,
         displayOrder: req.body?.displayOrder !== undefined ? Number(req.body.displayOrder) : undefined,
@@ -277,6 +333,9 @@ router.post(
     try {
       const order: string[] = Array.isArray(req.body?.order) ? req.body.order.map(String).filter(Boolean) : [];
       if (!order.length) return res.status(400).json({ success: false, message: 'No image order provided.' });
+      if (!await db().vehicles.findById(req.params.id)) return res.status(404).json({ success: false, message: 'Vehicle not found.' });
+      const existing = await db().vehicles.getImages(req.params.id);
+      if (order.length !== existing.length || new Set(order).size !== order.length || order.some((id) => !existing.some((image) => image.id === id))) return res.status(400).json({ success: false, message: 'Image order must contain exactly the current vehicle images.' });
       for (let i = 0; i < order.length; i++) {
         await db().vehicles.updateImage(order[i], { displayOrder: i });
       }

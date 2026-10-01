@@ -507,6 +507,16 @@ export async function fetchMyImports() {
   }
 }
 
+export async function updateMyProfile(payload: { fullName?: string; phone?: string }): Promise<{ success: boolean; user?: any; message?: string; fieldErrors?: Record<string, string> }> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await apiFetch('/api/me/profile', { method: 'PATCH', headers, body: JSON.stringify(payload) });
+    return await res.json();
+  } catch {
+    return { success: false, message: 'Profile could not be updated. Please try again.' };
+  }
+}
+
 export async function syncUserProfile(data: { clerkId?: string; email: string; fullName: string; phone?: string; role?: string }) {
   try {
     const headers = await getAuthHeaders();
@@ -743,18 +753,11 @@ export async function fetchVehicles(params?: VehicleSearchParams): Promise<Car[]
 
 // 13. Fetch single vehicle by ID or stock ID
 export async function fetchVehicleById(id: string): Promise<Car | null> {
-  try {
-    const res = await apiFetch(`/api/vehicles/${encodeURIComponent(id)}`);
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        return json.data;
-      }
-    }
-  } catch (err) {
-    console.warn('Vehicle fetch by ID failed:', err);
-  }
-  return null;
+  const res = await apiFetch(`/api/vehicles/${encodeURIComponent(id)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Vehicle service unavailable');
+  const json = await res.json();
+  return json.success && json.data ? json.data : null;
 }
 
 // 14. Fetch dynamic inventory facets (makes, models, conditions, price bounds, years)
@@ -817,6 +820,15 @@ export interface OperationsVehicle extends Car {
   status: 'available' | 'reserved' | 'sold' | 'delisted';
 }
 
+export interface OperationsVehicleImage {
+  id: string;
+  vehicleId: string;
+  url: string;
+  displayOrder: number;
+  isPrimary: boolean;
+  caption?: string;
+}
+
 export interface OperationsNotification {
   id: string;
   title: string;
@@ -867,12 +879,83 @@ export async function deleteOperationsVehicle(id: string, token?: string): Promi
   return res.json();
 }
 
+export async function updateOperationsVehicle(id: string, payload: Record<string, unknown>, token?: string): Promise<{ success: boolean; data?: OperationsVehicle; message?: string }> {
+  const res = await apiFetch(`/api/ops/vehicles/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
+  return res.json();
+}
+
+export async function fetchOperationsVehicleImages(id: string, token?: string): Promise<{ success: boolean; data: OperationsVehicleImage[]; message?: string }> {
+  const res = await apiFetch(`/api/ops/vehicles/${encodeURIComponent(id)}/images`, { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function uploadOperationsVehicleImages(id: string, files: File[], token?: string): Promise<{ success: boolean; data?: OperationsVehicleImage[]; message?: string }> {
+  const body = new FormData();
+  files.forEach((file) => body.append('images', file));
+  const bearer = token || (getAuthTokenFn ? await getAuthTokenFn() : null);
+  const res = await apiFetch(`/api/ops/vehicles/${encodeURIComponent(id)}/images/upload`, { method: 'POST', headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined, body });
+  return res.json();
+}
+
+export async function updateOperationsVehicleImage(id: string, imageId: string, payload: { isPrimary?: boolean; caption?: string; displayOrder?: number }, token?: string): Promise<{ success: boolean; data?: OperationsVehicleImage; message?: string }> {
+  const res = await apiFetch(`/api/ops/vehicles/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`, { method: 'PATCH', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
+  return res.json();
+}
+
+export async function deleteOperationsVehicleImage(id: string, imageId: string, token?: string): Promise<{ success: boolean; message?: string }> {
+  const res = await apiFetch(`/api/ops/vehicles/${encodeURIComponent(id)}/images/${encodeURIComponent(imageId)}`, { method: 'DELETE', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function reorderOperationsVehicleImages(id: string, order: string[], token?: string): Promise<{ success: boolean; data?: OperationsVehicleImage[]; message?: string }> {
+  const res = await apiFetch(`/api/ops/vehicles/${encodeURIComponent(id)}/images/reorder`, { method: 'POST', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ order }) });
+  return res.json();
+}
+
 export async function fetchOperationsNotifications(token?: string): Promise<{ success: boolean; data: OperationsNotification[] }> {
   const res = await apiFetch('/api/ops/notifications', { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
   return res.json();
 }
 
+export async function markOperationsNotificationRead(id: string, token?: string): Promise<{ success: boolean; message?: string }> {
+  const res = await apiFetch(`/api/ops/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
 export async function fetchOperationsAudit(token?: string): Promise<{ success: boolean; data: OperationsAuditEntry[] }> {
   const res = await apiFetch('/api/ops/audit', { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export type OperationsQueue = 'sell' | 'concierge' | 'imports' | 'rentals';
+export interface OperationsSetting { id: string; settingKey: string; settingValue: string; valueType: 'string' | 'number' | 'json'; label?: string; description?: string; updatedAt?: string; }
+
+export async function fetchOperationsQueue(kind: OperationsQueue, token?: string): Promise<{ success: boolean; data: any[]; message?: string }> {
+  const res = await apiFetch(`/api/ops/${kind}`, { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function updateOperationsQueue(kind: OperationsQueue, id: string, payload: Record<string, unknown>, token?: string): Promise<{ success: boolean; data?: any; message?: string }> {
+  const res = await apiFetch(`/api/ops/${kind}/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
+  return res.json();
+}
+
+export async function recordOperationsImportEvent(trackingId: string, payload: { status: string; location?: string; details?: string }, token?: string): Promise<{ success: boolean; data?: any; message?: string }> {
+  const res = await apiFetch(`/api/ops/imports/${encodeURIComponent(trackingId)}/events`, { method: 'POST', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
+  return res.json();
+}
+
+export async function fetchOperationsAnalytics(days: number, token?: string): Promise<{ success: boolean; data?: { since: string; totalEvents: number; eventTotals: { event_type: string; count: number }[]; topPages: { path: string; views: number }[]; topVehicles: { entity_id: string; views: number }[]; daily: { day: string; events: number }[] }; message?: string }> {
+  const res = await apiFetch(`/api/ops/analytics?days=${encodeURIComponent(days)}`, { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function fetchOperationsSettings(token?: string): Promise<{ success: boolean; data: OperationsSetting[]; message?: string }> {
+  const res = await apiFetch('/api/ops/settings', { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function saveOperationsSetting(settingKey: string, settingValue: string, token?: string): Promise<{ success: boolean; data?: OperationsSetting[]; message?: string }> {
+  const res = await apiFetch('/api/ops/settings', { method: 'PUT', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ settings: [{ settingKey, settingValue }] }) });
   return res.json();
 }
