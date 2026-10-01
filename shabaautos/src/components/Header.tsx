@@ -785,7 +785,10 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Tablet Navigation Controls (640px - 1023px) - Exclusively User Profile path */}
-        <div className="hidden sm:flex lg:hidden items-center ml-auto">
+        <div className="hidden sm:flex lg:hidden items-center gap-2 ml-auto">
+          {/* Tablet Notification Bell */}
+          <NotificationBell />
+
           {/* User Profile / Sign In */}
           <div className="shabaautos-dropdown shabaautos-tablet-account-dropdown">
             <button
