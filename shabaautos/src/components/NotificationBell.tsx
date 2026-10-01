@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Bell, BellRing, Check, ChevronDown, ChevronUp, Copy, Loader2, X } from 'lucide-react';
+import { Bell, BellRing, Check, ChevronDown, Copy, Loader2, X } from 'lucide-react';
 import { useAuthUser } from '../context/AuthContext';
 import { fetchMyNotifications, markMyNotificationRead, markMyNotificationsRead, MyNotification } from '../services/api';
 
@@ -31,18 +31,16 @@ export default function NotificationBell() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [activeItem, setActiveItem] = useState<MyNotification | null>(null);
 
-  const toggleItem = async (item: MyNotification) => {
-    const willExpand = !expandedIds[item.id];
-    setExpandedIds((previous) => ({ ...previous, [item.id]: willExpand }));
-    if (willExpand && item.status !== 'read') {
+  const openItem = async (item: MyNotification) => {
+    if (item.status !== 'read') {
       const token = await getToken();
-      await markMyNotificationRead(item.id, token ?? undefined).catch(() => undefined);
+      await markMyNotificationRead(item.id,token ?? undefined).catch(() => undefined);
       setItems((previous) => previous.map((entry) => entry.id === item.id ? { ...entry, status: 'read' } : entry));
     }
+    setActiveItem(item);
   };
-
   const copyNotification = async (item: MyNotification) => {
     try {
       const text = Object.entries(item).map(([key, value]) => `${key}: ${presentValue(value)}`).join('\n');
@@ -138,39 +136,52 @@ export default function NotificationBell() {
                 const unread = item.status !== 'read';
                 return (
                   <li key={item.id} className={`rounded-xl border p-2.5 ${unread ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-100 bg-white'}`}>
-                    <button type="button" onClick={() => void toggleItem(item)} className="w-full text-left" aria-expanded={Boolean(expandedIds[item.id])}>
+                    <button type="button" onClick={() => void openItem(item)} className="w-full text-left" aria-haspopup="dialog">
                       <div className="flex items-start justify-between gap-2">
                         <p className={`text-xs font-semibold leading-5 ${unread ? 'text-[#12492f]' : 'text-slate-700'}`}>{item.title}</p>
                         <span className="flex shrink-0 items-center gap-1.5">
                           <span className="text-[10px] text-slate-400">{formatTime(item.createdAt)}</span>
-                          {expandedIds[item.id] ? <ChevronUp size={12} className="text-slate-400" /> : <ChevronDown size={12} className="text-slate-400" />}
+                          <ChevronDown size={12} className="text-slate-400" />
                         </span>
                       </div>
-                      <p className="mt-0.5 text-xs leading-5 text-slate-600">{item.message}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-600">{item.message}</p>
                       {unread && <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-[#158047]" />}
-                      {!expandedIds[item.id] && <span className="mt-1 inline-block text-[10px] font-semibold text-emerald-700">Tap to read full details</span>}
+                      <span className="mt-1 inline-block text-[10px] font-semibold text-emerald-700">View full message →</span>
                     </button>
-                    {expandedIds[item.id] && (
-                      <div className="mt-2 border-t border-slate-200 pt-2">
-                        <div className="mb-1.5 flex items-center justify-between gap-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Full notification record</p>
-                          <button type="button" onClick={() => void copyNotification(item)} className="inline-flex min-h-7 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"><Copy size={11} />Copy details</button>
-                        </div>
-                        <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                          {Object.entries(item).map(([key, value]) => (
-                            <div key={key} className="min-w-0">
-                              <dt className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{key}</dt>
-                              <dd className="text-[11px] text-slate-700 [overflow-wrap:anywhere]" title={presentValue(value)}>{presentValue(value)}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </div>
-                    )}
                   </li>
                 );
               })}
             </ul>
           )}
+        </div>
+      )}
+
+      {activeItem && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={() => setActiveItem(null)} role="dialog" aria-modal="true" aria-label={activeItem.title}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-base font-bold text-slate-900">{activeItem.title}</p>
+                <p className="mt-0.5 text-xs text-slate-400">{formatTime(activeItem.createdAt)}</p>
+              </div>
+              <button type="button" onClick={() => setActiveItem(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close"><X size={20} /></button>
+            </div>
+            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+              <p className="text-sm leading-6 text-slate-800">{activeItem.message}</p>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Full notification record</p>
+              <button type="button" onClick={() => void copyNotification(activeItem)} className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"><Copy size={12} />Copy details</button>
+            </div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+              {Object.entries(activeItem).map(([key, value]) => (
+                <div key={key} className="min-w-0">
+                  <dt className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{key}</dt>
+                  <dd className="text-[11px] text-slate-700 [overflow-wrap:anywhere]" title={presentValue(value)}>{presentValue(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
       )}
     </div>
