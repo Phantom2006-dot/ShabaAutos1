@@ -839,6 +839,8 @@ export interface OperationsNotification {
   relatedEntityId?: string;
 }
 
+export type MyNotification = OperationsNotification;
+
 export interface OperationsAuditEntry {
   id: string;
   actorUserId?: string;
@@ -919,6 +921,21 @@ export async function fetchOperationsNotifications(token?: string): Promise<{ su
 
 export async function markOperationsNotificationRead(id: string, token?: string): Promise<{ success: boolean; message?: string }> {
   const res = await apiFetch(`/api/ops/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function fetchMyNotifications(token?: string): Promise<{ success: boolean; data: MyNotification[] }> {
+  const res = await apiFetch('/api/me/notifications', { headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function markMyNotificationsRead(token?: string): Promise<{ success: boolean; updated?: number }> {
+  const res = await apiFetch('/api/me/notifications/read', { method: 'POST', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  return res.json();
+}
+
+export async function markMyNotificationRead(id: string, token?: string): Promise<{ success: boolean; updated?: boolean }> {
+  const res = await apiFetch(`/api/me/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH', headers: { ...(await getAuthHeaders()), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
   return res.json();
 }
 

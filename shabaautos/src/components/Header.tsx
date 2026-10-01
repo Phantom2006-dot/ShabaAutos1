@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import NotificationBell from './NotificationBell';
 import {
   Phone,
   Heart,
@@ -726,6 +727,9 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden xl:inline">Compare</span>
             <b className="shabaautos-badge-count">{compareCount}</b>
           </button>
+
+          {/* Desktop Notification Bell */}
+          <NotificationBell />
 
           {/* User Sign In / Profile with Dropdown */}
           <div

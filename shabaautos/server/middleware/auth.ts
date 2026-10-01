@@ -40,7 +40,8 @@ export async function getAuthenticatedClerkUser(req: Request): Promise<Authentic
   if (!token) return null;
 
   const dbService = getDatabaseService();
-  const secretKey = process.env.CLERK_SECRET_KEY;
+  const storedClerk = await dbService.settings.getKey('apikey.clerk.secret_key').catch(() => null);
+  const secretKey = storedClerk?.settingValue || process.env.CLERK_SECRET_KEY;
   const isDemoMode = process.env.NODE_ENV !== 'production' && (process.env.DEMO_MODE === 'true' || !secretKey || secretKey.includes('placeholder'));
 
   // 1. Live Clerk token verification when Secret Key is available

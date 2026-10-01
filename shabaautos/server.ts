@@ -111,6 +111,148 @@ async function recordActivity(entry: {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Notification helpers
+// -----------------------------------------------------------------------------
+type NotificationInput = {
+  userId: string;
+  email?: string;
+  title: string;
+  message: string;
+  relatedType?: string;
+  relatedId?: string;
+  channel?: 'in_app' | 'email' | 'sms';
+};
+
+async function getStaffAdminUsers() {
+  try {
+    return (await dbService.users.list(5000, 0)).filter((user) => user.role === 'staff' || user.role === 'admin');
+  } catch {
+    return [];
+  }
+}
+async function notifyUser(input: NotificationInput) {
+  try {
+    await dbService.notifications.create({
+      userId: input.userId,
+      recipientEmail: input.email || undefined,
+      channel: input.channel || 'in_app',
+      title: input.title,
+      message: input.message,
+      status: 'queued',
+      relatedEntityType: input.relatedType || undefined,
+      relatedEntityId: input.relatedId || undefined,
+    });
+  } catch {
+    // Notifications must never break the main request flow.
+  }
+}
+
+async function notifyStaffAdmins(input: Omit<NotificationInput, 'userId' | 'email'>) {
+  const staff = await getStaffAdminUsers();
+  try {
+    for (const user of staff) {
+      await dbService.notifications.create({
+        userId: user.id,
+        recipientEmail: user.email || undefined,
+        channel: input.channel || 'in_app',
+        title: input.title,
+        message: input.message,
+        status: 'queued',
+        relatedEntityType: input.relatedType || undefined,
+        relatedEntityId: input.relatedId || undefined,
+      });
+    }
+  } catch {
+    // Notifications must never break the main request flow)
+  }
+}
+
+async function notifyCustomerOnStatusChange(entry: {
+  userId?: string;
+  userEmail?: string;
+  entity: string;
+  entityLabel: string;
+  title: string;
+  message: string;
+  relatedId?: string;
+}) {
+  if (!entry.userId) return;
+  await notifyUser({
+    userId: entry.userId,
+    email: entry.userEmail,
+    title: entry.title,
+    message: entry.message,
+    relatedType: entry.entity,
+    relatedId: entry.relatedId || entry.entityLabel,
+  });
+}
+// -----------------------------------------------------------------------------
+// Unified "My Bookings & Orders" endpoint
+// -----------------------------------------------------------------------------
+app.get('/api/me/bookings', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const [rentals, imports, sell, concierge, inspections, offers] = await Promise.all([
+      dbService.rentals.listBookingsByUserId(userId).catch(() => []),
+      dbService.imports.listRequests(userId).catch(() => []),
+      dbService.sell.list(userId).catch(() => []),
+      dbService.concierge.list(userId).catch(() => []),
+      dbService.inspections.listByUserId(userId).catch(() => []),
+      dbService.offers.listByUserId(userId).catch(() => []),
+    ]);
+
+const typeLabel = (type: string): string => {
+      switch (type) {
+        case 'rental': return 'Car Rental';
+        case 'import': return 'Import Order';
+        case 'sell': return 'Sell My Car';
+        case 'concierge': return 'Find Me a Car';
+        case 'inspection': return 'Inspection Booking';
+        case 'offer': return 'Offer';
+        default: return type;
+      }
+    };
+
+    const normalizeStatus = (type: string, item: any): string => {
+      switch (type) {
+        case 'rental': return String(item.status || 'Active Reservation');
+        case 'import': return String(item.status || 'Sourcing Started');
+        case 'sell': return String(item.reviewStatus || item.status || 'pending');
+        case 'concierge': return String(item.status || 'Request Received');
+        case 'inspection': return String(item.status || 'Pending');
+        case 'offer': return String(item.status || (item.offers && item.offers[0]?.status) || 'Pending');
+        default: return String(item?.status || '');
+      }
+    };
+
+    const decision = (type: string, item: any): { state: 'accepted' | 'in_progress' | 'needs_info' | 'pending' | 'rejected' | 'cancelled' | 'completed' | 'other'; label: string } => {
+      const status = normalizeStatus(type, item).toLowerCase();
+      const rejected = ['rejected', 'cancelled', 'declined'].includes(status);
+      const accepted = ['approved', 'accepted', 'confirmed', 'shipped from usa', 'inspection passed', 'port arrival', 'customs clearance', 'delivered'].includes(status);
+      const completed = ['completed', 'delivered', 'fulfilled', 'closed'].includes(status);
+      if (status === 'pending' || status === 'request received' || status === 'sourcing started' || status === 'active reservation') return { state: 'in_progress', label: normalizeStatus(type, item) };
+      if (rejected) return { state: 'rejected', label: normalizeStatus(type, item) };
+      if (completed) return { state: 'completed', label: normalizeStatus(type, item) };
+      if (accepted) return { state: 'accepted', label: normalizeStatus(type, item) };
+      return { state: 'in_progress', label: normalizeStatus(type, item) };
+    };
+const items: Array<Record<string, unknown>> = [];
+    const push = (type: string, item: any) => {
+      const state = decision(type, item).state || 'other';
+      items.push({ type, state, lab: typeLabel(type), status: normalizeStatus(type, item), raw: item });
+    };
+    for (const item of rentals) push('rental', item);
+    for (const item of imports) push('import', item);
+    for (const item of sell) push('sell', item);
+    for (const item of concierge) push('concierge', item);
+    for (const item of inspections) push('inspection', item);
+    for (const item of offers) push('offer', item);
+    res.json({ ok: true, items });
+   } catch (err) {
+    res.status(500).json({ ok: false, error: String(err) });
+   }
+});
 // Capture page views + vehicle detail views for real (measured-data-only) analytics.
 // Only enabled when ACTIVITY_TRACKING=true (default true), skips static asset routes.
 app.use('/api/vehicles', (req: Request, res: Response, next: () => void) => {
@@ -830,6 +972,28 @@ app.get('/api/me/notifications', requireAuth, async (req: Request, res: Response
   }
 });
 
+app.post('/api/me/notifications/read', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const notifications = await dbService.notifications.listByUserId(req.user!.id);
+    const unread = notifications.filter((n) => n.status === 'queued' || n.status === 'sent');
+    for (const notification of unread) {
+      await dbService.notifications.markRead(notification.id, req.user!.id).catch(() => undefined);
+    }
+    res.json({ success: true, updated: unread.length });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.patch('/api/me/notifications/:id/read', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const updated = await dbService.notifications.markRead(req.params.id, req.user!.id);
+    res.json({ success: true, updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // 2d. Staff & Admin Protected Routes
 // -------------------------------------------------------------
@@ -1092,6 +1256,12 @@ app.post('/api/offers', requireAuth, async (req: Request, res: Response) => {
       changesJson: JSON.stringify({ amountNgn: amount, carId, userId: req.user!.id }),
     });
 
+    await notifyStaffAdmins({
+      relatedType: 'offer',
+      title: 'New offer received',
+      message: 'A customer submitted a new offer for review.',
+      relatedId: (offer as any)?.id,
+    });
     res.status(201).json({
       success: true,
       message: 'Your offer has been securely recorded and sent to the dealer for review!',
@@ -1151,6 +1321,12 @@ app.post('/api/inspections', requireAuth, async (req: Request, res: Response) =>
       status: 'Pending',
     });
 
+    await notifyStaffAdmins({
+      relatedType: 'inspection',
+      title: 'New inspection request',
+      message: 'A customer booked a vehicle inspection.',
+      relatedId: (inspection as any)?.id,
+    });
     res.status(201).json({
       success: true,
       message: 'Inspection request received. The team will contact you to confirm your preferred date.',
@@ -1266,6 +1442,12 @@ app.post('/api/rentals/book', requireAuth, async (req: Request, res: Response) =
       status: 'Active Reservation',
     });
 
+    await notifyStaffAdmins({
+      relatedType: 'rental',
+      title: 'New rental booking',
+      message: 'A customer made a rental reservation.',
+      relatedId: (booking as any)?.id,
+    });
     res.status(201).json({
       success: true,
       message: 'Rental reservation confirmed! Our fleet coordinator will contact you for vehicle handover.',
@@ -1481,6 +1663,12 @@ app.post('/api/imports/request', requireAuth, async (req: Request, res: Response
       path: '/api/imports/request',
     });
 
+    await notifyStaffAdmins({
+      relatedType: 'import',
+      title: 'New import request',
+      message: 'A customer requested a vehicle import.',
+      relatedId: (order as any)?.trackingId,
+    });
     res.status(201).json({
       success: true,
       message: 'Import request received. Our team will review the vehicle and route details before confirming next steps.',
@@ -1681,6 +1869,12 @@ app.post('/api/sell', requireAuth, async (req: Request, res: Response) => {
       path: '/api/sell',
     });
 
+    await notifyStaffAdmins({
+      relatedType: 'sell',
+      title: 'New sell request',
+      message: 'A customer submitted a car for valuation.',
+      relatedId: (submission as any)?.id,
+    });
     res.status(201).json({
       success: true,
       message: 'Your valuation request was received for review. The estimate is preliminary and is not a purchase offer.',
@@ -1781,6 +1975,12 @@ app.post('/api/concierge', requireAuth, async (req: Request, res: Response) => {
       path: '/api/concierge',
     });
 
+    await notifyStaffAdmins({
+      relatedType: 'concierge',
+      title: 'New sourcing request',
+      message: 'A customer submitted a find-me-a-car request.',
+      relatedId: (request as any)?.id,
+    });
     res.status(201).json({
       success: true,
       ticketId: request.id,
@@ -1832,6 +2032,15 @@ app.patch('/api/ops/sell/:id', requireAuth, requireRole('admin'), async (req: Re
       note: req.body?.adminNotes ? String(req.body.adminNotes) : undefined,
       changedBy: req.user!.id,
     }).catch(() => undefined);
+    await notifyCustomerOnStatusChange({
+      userId: (updated as any)?.userId || (prev as any)?.userId,
+      userEmail: (updated as any)?.userEmail || (prev as any)?.userEmail,
+      entity: 'sell',
+      entityLabel: 'Sell My Car request',
+      title: 'Sell request reviewed',
+      message: 'Your sell request was reviewed by our team. Current status: ' + (reviewStatus || 'pending'),
+      relatedId: req.params.id,
+    });
     await recordActivity({
       eventType: 'admin_action',
       userId: req.user!.id,
@@ -1872,6 +2081,15 @@ app.patch('/api/ops/concierge/:id', requireAuth, requireRole(['staff', 'admin'])
       toStatus: status,
       changedBy: req.user!.id,
     }).catch(() => undefined);
+    await notifyCustomerOnStatusChange({
+      userId: (existing as any)?.userId,
+      userEmail: (existing as any)?.userEmail,
+      entity: 'concierge',
+      entityLabel: 'Find-me-a-car request',
+      title: 'Sourcing request updated',
+      message: 'Your sourcing request status changed to: ' + status,
+      relatedId: req.params.id,
+    });
     res.json({ success: true, data: updated });
    } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -1935,6 +2153,15 @@ app.patch('/api/ops/imports/:trackingId', requireAuth, requireRole(['staff', 'ad
       changedBy: req.user!.id,
     }).catch(() => undefined);
     const afterStatus = await dbService.imports.findByTrackingId(req.params.trackingId);
+    await notifyCustomerOnStatusChange({
+      userId: (current as any)?.userId || (afterStatus as any)?.userId,
+      userEmail: (current as any)?.userEmail || (afterStatus as any)?.userEmail,
+      entity: 'import',
+      entityLabel: 'Import order',
+      title: 'Import order updated',
+      message: 'Your import order status changed to: ' + status,
+      relatedId: req.params.trackingId,
+    });
     res.json({ success: true, data: afterStatus });
    } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -1971,6 +2198,15 @@ app.patch('/api/ops/rentals/:bookingId', requireAuth, requireRole(['staff', 'adm
       toStatus: status,
       changedBy: req.user!.id,
     }).catch(() => undefined);
+    await notifyCustomerOnStatusChange({
+      userId: (prev as any)?.userId || (after as any)?.userId,
+      userEmail: (prev as any)?.userEmail || (after as any)?.userEmail,
+      entity: 'rental',
+      entityLabel: 'Rental booking',
+      title: 'Rental booking updated',
+      message: 'Your rental booking status changed to: ' + status,
+      relatedId: req.params.bookingId,
+    });
     res.json({ success: true, data: after });
    } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
@@ -2080,6 +2316,82 @@ app.put('/api/ops/settings', requireAuth, requireRole('admin'), async (req: Requ
    }
 });
 
+// -------------------------------------------------------------
+// Admin API Key Vault (stored secrets for live AI / Clerk / media)
+// -------------------------------------------------------------
+const API_KEY_DEFS = [
+  { keyId: 'groq.api_key', label: 'GROQ AI API Key', envName: 'GROQ_API_KEY', hint: 'Used by the AI assistant and comparison summaries.' },
+  { keyId: 'clerk.secret_key', label: 'Clerk Secret Key', envName: 'CLERK_SECRET_KEY', hint: 'Verifies user session tokens in production.' },
+  { keyId: 'cloudinary.cloud_name', label: 'Cloudinary Cloud Name', envName: 'CLOUDINARY_CLOUD_NAME', hint: 'Media delivery for vehicle photos.' },
+  { keyId: 'cloudinary.api_key', label: 'Cloudinary API Key', envName: 'CLOUDINARY_API_KEY', hint: 'Used for secure image uploads.' },
+  { keyId: 'cloudinary.api_secret', label: 'Cloudinary API Secret', envName: 'CLOUDINARY_API_SECRET', hint: 'Collect with the API key for authenticated uploads.' },
+];
+const maskSecret = (value: string | undefined): string => {
+  if (!value) return '';
+  if (value.length <= 8) return '*'.repeat(value.length);
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+};
+async function readStoredApiKeys(): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const def of API_KEY_DEFS) {
+    const stored = await dbService.settings.getKey(`apikey.${def.keyId}`);
+    if (stored?.settingValue) out[def.keyId] = stored.settingValue;
+  }
+  return out;
+}
+async function resolveLiveApiKey(keyId: string, envName: string): Promise<string | undefined> {
+  const stored = await readStoredApiKeys();
+  return stored[keyId] || process.env[envName];
+}
+
+app.get('/api/ops/api-keys', requireAuth, requireRole('admin'), async (_req: Request, res: Response) => {
+  try {
+    const stored = await readStoredApiKeys();
+    res.json({
+      success: true,
+      data: API_KEY_DEFS.map((def) => {
+        const value = stored[def.keyId] || process.env[def.envName];
+        return { keyId: def.keyId, label: def.label, hint: def.hint, envName: def.envName, configured: Boolean(value), stored: Boolean(stored[def.keyId]), masked: maskSecret(value) };
+      }),
+    });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
+app.put('/api/ops/api-keys', requireAuth, requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    const keys = Array.isArray(req.body?.keys) ? req.body.keys : [];
+    const allowedIds = new Set(API_KEY_DEFS.map((d) => d.keyId));
+    if (!keys.length || keys.length > API_KEY_DEFS.length) return res.status(400).json({ success: false, message: 'Provide at least one key to save.' });
+    for (const keyEntry of keys) {
+      const keyId = String(keyEntry?.keyId || '');
+      if (!allowedIds.has(keyId)) return res.status(400).json({ success: false, message: `Unknown API key id ${keyId}.` });
+      const value = String(keyEntry?.value ?? '');
+      if (value.length > 500) return res.status(400).json({ success: false, message: `${keyId} must be 500 characters or fewer.` });
+      await dbService.settings.set({
+        settingKey: `apikey.${keyId}`,
+        settingValue: value,
+        valueType: 'string',
+        label: API_KEY_DEFS.find((d) => d.keyId === keyId).label,
+        updatedBy: req.user!.id,
+      });
+    }
+    await dbService.audit.record({ actorUserId: req.user!.id, actorRole: req.user!.role, action: 'update_api_keys', resourceType: 'api_key_vault', resourceId: 'api-keys', changesJson: JSON.stringify({ keyIds: keys.map((k) => k.keyId) }) }).catch(() => undefined);
+    await recordActivity({ eventType: 'admin_action', userId: req.user!.id, entityType: 'api_keys', path: '/api/ops/api-keys' });
+    const stored = await readStoredApiKeys();
+    res.json({
+      success: true,
+      data: API_KEY_DEFS.map((def) => {
+        const value = stored[def.keyId] || process.env[def.envName];
+        return { keyId: def.keyId, label: def.label, hint: def.hint, envName: def.envName, configured: Boolean(value), stored: Boolean(stored[def.keyId]), masked: maskSecret(value) };
+      }),
+    });
+   } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+   }
+});
+
 // Analytics dashboard (real captured events)
 app.get('/api/ops/analytics', requireAuth, requireRole(['staff', 'admin']), async (req: Request, res: Response) => {
   try {
@@ -2129,13 +2441,14 @@ async function runAiAssistant(req: Request, res: Response, feature: string) {
     sourceVehicleIds: Array.isArray(req.body?.vehicleIds) ? req.body.vehicleIds.slice(0, 4) : [],
   };
 
-  const enabled = process.env.AI_FEATURES_ENABLED === 'true' && Boolean(process.env.GROQ_API_KEY);
+  const groqKey = await resolveLiveApiKey('groq.api_key', 'GROQ_API_KEY');
+  const enabled = process.env.AI_FEATURES_ENABLED === 'true' && Boolean(groqKey);
   if (!enabled) return res.json({ success: true, data: fallback, provider: 'deterministic-fallback' });
 
   try {
     const response = await fetch(`${process.env.GROQ_BASE_URL || 'https://api.groq.com/openai/v1'}/chat/completions`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(12000),
       body: JSON.stringify({
         model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
