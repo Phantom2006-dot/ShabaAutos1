@@ -274,7 +274,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             {/* Left Column: Heading, Subtitle & 3 Feature Badges */}
             <div className="lg:col-span-6 space-y-5">
               <h1 className="text-3xl sm:text-5xl lg:text-[54px] font-black text-slate-950 tracking-tight leading-[1.15] sm:leading-[1.1]">
-                Find, Rent or Import <br className="hidden sm:inline" />
+                Buy, Rent or Import <br className="hidden sm:inline" />
                 Your <span className="text-[#0e7c3a]">Perfect Car</span>
               </h1>
 
