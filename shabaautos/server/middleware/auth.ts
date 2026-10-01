@@ -64,7 +64,7 @@ export async function getAuthenticatedClerkUser(req: Request): Promise<Authentic
       
       // Determine role from metadata or DB (roles must only be assigned by server/admin)
       const claimRole = (decoded.metadata?.role || decoded.public_metadata?.role) as UserRole | undefined;
-      const effectiveRole: UserRole = dbUser?.role || claimRole || 'customer';
+      let effectiveRole: UserRole = dbUser?.role || claimRole || 'customer';
 
       if (!dbUser && email) {
         // Auto-provision or sync database record
@@ -74,6 +74,7 @@ export async function getAuthenticatedClerkUser(req: Request): Promise<Authentic
           fullName,
           role: effectiveRole,
         });
+        effectiveRole = dbUser?.role || effectiveRole;
       }
 
       return {

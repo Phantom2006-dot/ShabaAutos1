@@ -517,6 +517,31 @@ export async function updateMyProfile(payload: { fullName?: string; phone?: stri
   }
 }
 
+export interface AuthMeUser {
+  id: string;
+  clerkId: string;
+  email: string;
+  fullName: string;
+  phone: string;
+  role: string;
+  avatarUrl?: string | null;
+}
+
+/**
+ * Authoritative account profile straight from the backend, including the role
+ * stored in our own database. The UI must trust this value rather than the
+ * identity provider's metadata or anything cached in the browser.
+ */
+export async function fetchAuthMe(): Promise<{ success: boolean; user?: AuthMeUser; message?: string }> {
+  try {
+    const headers = await getAuthHeaders();
+    const res = await apiFetch('/api/auth/me', { headers });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, message: err.message };
+  }
+}
+
 export async function syncUserProfile(data: { clerkId?: string; email: string; fullName: string; phone?: string; role?: string }) {
   try {
     const headers = await getAuthHeaders();

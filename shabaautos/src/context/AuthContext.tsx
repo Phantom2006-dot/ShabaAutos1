@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { ClerkProvider, useUser, useAuth as useClerkAuth, useSignIn, useSignUp, useClerk } from '@clerk/clerk-react';
 import { AppUser, AppUserRole } from '../types';
-import { setAuthTokenGetter, syncUserProfile } from '../services/api';
+import { setAuthTokenGetter, syncUserProfile, fetchAuthMe, type AuthMeUser } from '../services/api';
 
 export interface AuthContextType {
   user: AppUser | null;
@@ -245,19 +245,38 @@ function ClerkAuthInner({ children }: { children: ReactNode }) {
     setAuthTokenGetter(getToken);
   }, [getToken]);
 
-  // Derive normalized app user from Clerk User object
+  // The backend database owns roles, so ask it for the authoritative profile.
+  // A promotion made in the admin dashboard or directly in the database is then
+  // reflected on the next page load instead of being masked by Clerk metadata.
+  const [serverProfile, setServerProfile] = useState<AuthMeUser | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!isSignedIn) {
+      setServerProfile(null);
+      return () => { active = false; };
+    }
+    (async () => {
+      const response = await fetchAuthMe();
+      if (active && response.success && response.user) {
+        setServerProfile(response.user);
+      }
+    })();
+    return () => { active = false; };
+  }, [isSignedIn, userId]);
+  // Derive the normalized app user from the database profile, falling back to Clerk.
   const userRole: AppUserRole =
-    (clerkUser?.publicMetadata?.role as AppUserRole) || 'customer';
-
+    (serverProfile?.role as AppUserRole) ||
+    (clerkUser?.publicMetadata?.role as AppUserRole) ||
+    'customer';
   const mappedUser: AppUser | null = clerkUser
     ? {
-        id: clerkUser.id,
+        id: serverProfile?.id || clerkUser.id,
         clerkId: clerkUser.id,
-        email: clerkUser.primaryEmailAddress?.emailAddress || '',
-        fullName: clerkUser.fullName || `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'ShabaAutos User',
-        phone: (clerkUser.unsafeMetadata?.phone as string | undefined) || clerkUser.primaryPhoneNumber?.phoneNumber || '',
+        email: serverProfile?.email || clerkUser.primaryEmailAddress?.emailAddress || '',
+        fullName: serverProfile?.fullName || clerkUser.fullName || `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || 'ShabaAutos User',
+        phone: serverProfile?.phone || (clerkUser.unsafeMetadata?.phone as string | undefined) || clerkUser.primaryPhoneNumber?.phoneNumber || '',
         role: userRole,
-        avatarUrl: clerkUser.imageUrl,
+        avatarUrl: serverProfile?.avatarUrl || clerkUser.imageUrl,
       }
     : null;
 

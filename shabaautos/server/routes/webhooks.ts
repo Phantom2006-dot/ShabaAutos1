@@ -76,8 +76,15 @@ export async function handleClerkWebhook(req: Request, res: Response) {
           || data.username
           || 'Valued Customer';
 
-        // Server-side role assignment only! Default to customer
-        const role: UserRole = data.public_metadata?.role || 'customer';
+        // Roles are owned by our own database (admin dashboard or Neon). Clerk
+        // metadata is only honoured when it explicitly carries a valid role, so a
+        // routine profile update can never downgrade a promoted operator back to
+        // customer. When metadata has no role, the stored role is preserved.
+        const metadataRole = data.public_metadata?.role;
+        const role: UserRole | undefined =
+          metadataRole === 'admin' || metadataRole === 'staff' || metadataRole === 'customer'
+            ? (metadataRole as UserRole)
+            : undefined;
 
         await dbService.users.upsertClerkUser({
           clerkId,
