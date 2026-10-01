@@ -196,15 +196,23 @@ export const ImportFormScreen: React.FC<ImportFormScreenProps> = ({ onNavigate }
     window.setTimeout(() => setCopiedTracking(false), 2000);
   };
 
+  const viewSubmittedRequest = () => {
+    if (!trackingId) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('trackingId', trackingId);
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    onNavigate('order-tracking');
+  };
+
   const inputClass = 'w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-medium text-gray-900 focus:outline-hidden focus:ring-1 focus:ring-emerald-500';
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] shaba-screen py-8">
+    <div className="min-h-screen bg-[#f8f9fa] shaba-screen py-5 sm:py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <nav className="flex items-center gap-2 text-xs text-gray-500 mb-6"><button type="button" onClick={() => onNavigate('home')} className="hover:text-[#0a502c]">Home</button><span>&gt;</span><button type="button" onClick={() => onNavigate('import-landing')} className="hover:text-[#0a502c]">Import from US</button><span>&gt;</span><span className="font-semibold text-gray-900">Request details</span></nav>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          <aside className="lg:col-span-1 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 lg:gap-8">
+          <aside className="order-2 lg:order-1 lg:col-span-1 space-y-4 lg:space-y-6">
             <div className="bg-white rounded-xl border shaba-surface border-gray-200 p-5 shadow-xs">
               <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 pb-3 border-b border-gray-100">Request intake</h2>
               <div className="flex items-start gap-3"><div className="w-8 h-8 rounded-full bg-[#0a502c] text-white flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-xs">1</div><div><h3 className="text-xs font-bold text-[#0a502c]">Request details</h3><p className="text-[11px] text-gray-500">Vehicle, route and contact information</p></div></div>
@@ -213,11 +221,11 @@ export const ImportFormScreen: React.FC<ImportFormScreenProps> = ({ onNavigate }
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 shadow-xs"><h3 className="text-xs font-bold text-gray-900 mb-1">Need assistance?</h3><p className="text-[11px] text-gray-600 leading-relaxed mb-4">If you are unsure which details to provide, send what you know; our team can clarify missing information.</p>{contactDigits && <a href={`https://wa.me/${contactDigits}`} target="_blank" rel="noopener noreferrer" className="w-full py-2 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-colors mb-2"><MessageSquare className="w-3.5 h-3.5" />Chat with support</a>}{businessContact.phone && <div className="text-center text-[11px] text-gray-600 flex items-center justify-center gap-1.5 pt-1"><Phone className="w-3 h-3 text-[#0a502c]" /><span>{businessContact.phone}</span></div>}{businessContact.email && <a className="block text-center text-[11px] text-emerald-800" href={`mailto:${businessContact.email}`}>{businessContact.email}</a>}</div>
           </aside>
 
-          <main className="lg:col-span-3"><div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-6 sm:p-8 shadow-xs">
+          <main className="order-1 min-w-0 lg:order-2 lg:col-span-3"><div className="bg-white rounded-2xl border shaba-surface border-gray-200 p-4 sm:p-8 shadow-xs">
             <div className="mb-6"><div className="flex items-center gap-2 text-[#0a502c] mb-2"><FileText className="w-5 h-5" /><span className="text-xs font-black uppercase tracking-wider">One-step request</span></div><h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">Import from the US</h1><p className="text-xs sm:text-sm text-gray-600 mt-1">Provide the details available to you. Required fields are marked clearly.</p></div>
             <div className="mb-8 pb-6 border-b border-gray-100"><div className="h-1.5 bg-[#0a502c] rounded-full mb-2" /><span className="text-[11px] font-bold text-[#0a502c]">Request details</span></div>
 
-            {submitted ? <div className="py-12 text-center space-y-4"><div className="w-16 h-16 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center mx-auto"><CheckCircle className="w-8 h-8" /></div><h2 className="text-xl font-bold text-gray-900">Request received</h2><div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-xs text-emerald-900 font-bold mx-auto"><span>Server reference: <span className="font-mono text-emerald-700">{trackingId}</span></span><button type="button" onClick={copyToClipboard} className="p-1 hover:bg-emerald-200 rounded text-emerald-800 cursor-pointer" title="Copy server reference" aria-label="Copy server reference">{copiedTracking ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}</button></div><p className="text-xs text-gray-600 max-w-md mx-auto leading-relaxed">Your import request has been recorded. A specialist can review the details and contact you using the information provided.</p><div className="pt-4 flex flex-wrap justify-center gap-3"><button type="button" onClick={() => onNavigate('order-tracking')} className="px-5 py-2.5 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition-colors shadow-xs cursor-pointer">View request status</button><button type="button" onClick={() => { setSubmitted(false); setTrackingId(''); }} className="px-5 py-2.5 bg-gray-100 text-gray-800 text-xs font-semibold rounded-lg hover:bg-gray-200 cursor-pointer">Submit another request</button></div></div> : <>
+            {submitted ? <div className="py-12 text-center space-y-4"><div className="w-16 h-16 rounded-full bg-emerald-100 text-[#0a502c] flex items-center justify-center mx-auto"><CheckCircle className="w-8 h-8" /></div><h2 className="text-xl font-bold text-gray-900">Request received</h2><div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl text-xs text-emerald-900 font-bold mx-auto"><span>Server reference: <span className="font-mono text-emerald-700">{trackingId}</span></span><button type="button" onClick={copyToClipboard} className="p-1 hover:bg-emerald-200 rounded text-emerald-800 cursor-pointer" title="Copy server reference" aria-label="Copy server reference">{copiedTracking ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}</button></div><p className="text-xs text-gray-600 max-w-md mx-auto leading-relaxed">Your import request has been recorded. A specialist can review the details and contact you using the information provided.</p><div className="pt-4 flex flex-wrap justify-center gap-3"><button type="button" onClick={viewSubmittedRequest} className="px-5 py-2.5 bg-[#0a502c] hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition-colors shadow-xs cursor-pointer">View request status</button><button type="button" onClick={() => { setSubmitted(false); setTrackingId(''); }} className="px-5 py-2.5 bg-gray-100 text-gray-800 text-xs font-semibold rounded-lg hover:bg-gray-200 cursor-pointer">Submit another request</button></div></div> : <>
               {submitError && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-800">{submitError}</div>}
               <form onSubmit={handleSubmit} className="space-y-8">
                 <section><h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">1. Vehicle details</h2><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Anchor,
@@ -10,7 +10,6 @@ import {
   Clock3,
   Copy,
   ExternalLink,
-  FileText,
   Loader2,
   LockKeyhole,
   MapPin,
@@ -207,7 +206,8 @@ const getResponseMessage = (value: unknown, fallback: string): string => {
 
 export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavigate }) => {
   const { isLoaded, isSignedIn } = useAuthUser();
-  const [trackingId, setTrackingId] = useState('');
+  const [trackingId, setTrackingId] = useState(() => typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('trackingId') || '');
+  const initialLookupDone = useRef(false);
   const [orders, setOrders] = useState<ImportSummary[]>([]);
   const [currentOrder, setCurrentOrder] = useState<TrackingOrder | null>(null);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -253,7 +253,7 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavi
     };
   }, [isLoaded, isSignedIn]);
 
-  const handleLookup = async (value: string) => {
+  const handleLookup = async (value: string, scrollToResult = false) => {
     const normalizedId = value.trim();
     if (!normalizedId) {
       setLookupState('error');
@@ -273,6 +273,12 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavi
       const mapped = response.success === true && response.found === true ? mapTrackingOrder(response.data) : null;
       if (mapped) {
         setCurrentOrder(mapped);
+        const url = new URL(window.location.href);
+        url.searchParams.set('trackingId', mapped.orderId);
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+        if (scrollToResult && window.matchMedia('(max-width: 639px)').matches) {
+          window.setTimeout(() => document.getElementById('tracking-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+        }
         return;
       }
 
@@ -291,8 +297,17 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavi
 
   const handleSearchSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    void handleLookup(trackingId);
+    void handleLookup(trackingId, true);
   };
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || ordersLoading || ordersError || initialLookupDone.current) return;
+    const linkedId = new URLSearchParams(window.location.search).get('trackingId');
+    const suggestedId = linkedId || (orders.length === 1 ? orders[0].trackingId : '');
+    if (!suggestedId) return;
+    initialLookupDone.current = true;
+    void handleLookup(suggestedId);
+  }, [isLoaded, isSignedIn, ordersLoading, ordersError, orders]);
 
   const latestEvent = useMemo(() => {
     if (!currentOrder || currentOrder.events.length === 0) return undefined;
@@ -383,7 +398,7 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavi
                       type="button"
                       key={order.trackingId}
                       aria-pressed={selected}
-                      onClick={() => setTrackingId(order.trackingId)}
+                      onClick={() => void handleLookup(order.trackingId, true)}
                       className={`w-full rounded-xl border p-3 text-left transition ${selected ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40'}`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -403,15 +418,6 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavi
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-slate-900 p-4 text-slate-100 shadow-sm">
-              <div className="flex items-start gap-3">
-                <FileText className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
-                <div>
-                  <h2 className="text-sm font-bold">Need help?</h2>
-                  <p className="mt-1 text-xs leading-5 text-slate-300">Use the tracking ID from your request confirmation. No documents or live vessel telemetry are shown unless the relevant record is available.</p>
-                </div>
-              </div>
-            </section>
           </aside>
 
           <main className="min-w-0 space-y-5">
@@ -443,6 +449,8 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavi
               )}
             </section>
 
+            {!currentOrder && !lookupMessage && <p className="text-xs text-slate-500">Your tracking ID is in the request confirmation. Only updates recorded for your account appear here.</p>}
+
             {!currentOrder && !isSearching && !lookupMessage && (
               <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm sm:p-12">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800"><Ship className="h-7 w-7" /></div>
@@ -453,7 +461,7 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ onNavi
 
             {currentOrder && (
               <>
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+                <section id="tracking-details" className="scroll-mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">

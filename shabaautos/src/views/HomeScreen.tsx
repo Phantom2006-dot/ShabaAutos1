@@ -16,7 +16,6 @@ import {
   Ship,
   DollarSign,
   Headphones,
-  Bell,
   UserRound,
   ShoppingCart,
   Zap,
@@ -155,9 +154,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <img src="/assets/shabaautos-logo-new.png" alt="ShabaAutos - Your Car. Your Choice." />
         </div>
         <div className="home-mobile-header-actions">
-          <button type="button" aria-label="Notifications" className="home-mobile-icon-button">
-            <Bell className="w-5 h-5" />
-          </button>
           {isSignedIn && user ? (
             <button
               type="button"
@@ -204,7 +200,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </div>
       <section className="home-mobile-hero sm:hidden">
         <div className="mobile-app-greeting">
-          <div><span className="mobile-status-dot" /> Good morning</div>
+          <div><span className="mobile-status-dot" /> {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'}</div>
           <button type="button" onClick={() => onNavigate('saved-compare')} aria-label="View saved cars" className="mobile-saved-button">
             <Bookmark className="w-4 h-4" />
           </button>
@@ -217,8 +213,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         <form className="mobile-app-search" onSubmit={handleMobileSearch}>
           <Search className="w-5 h-5" />
-          <input value={mobileSearch} onChange={(event) => setMobileSearch(event.target.value)} aria-label="Search cars" placeholder="Search make, model or keyword" />
-          <button type="button" aria-label="Open filters" onClick={() => navigateToInventory({ search: mobileSearch.trim() || undefined })}><SlidersHorizontal className="w-5 h-5" /></button>
+          <input value={mobileSearch} onChange={(event) => setMobileSearch(event.target.value)} aria-label="Search cars" enterKeyHint="search" placeholder="Make, model or stock ID" />
+          <button type="submit" className="mobile-app-search-submit" aria-label="Search available cars">Search</button>
+          <button type="button" aria-label="Browse filters" onClick={() => navigateToInventory({ search: mobileSearch.trim() || undefined })}><SlidersHorizontal className="w-4 h-4" /></button>
         </form>
 
         <div className="mobile-quick-actions" aria-label="Main services">
@@ -246,7 +243,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         <div className="mobile-car-carousel">
           {isLoadingPopularCars ? <div className="mobile-car-loading">Finding your next car...</div> : popularCars.map((car) => {
             const isSaved = savedCarIds.includes(car.id);
-            return <article key={car.id} className="mobile-car-card" onClick={() => { onSelectCar(car.id, car); onNavigate('car-details'); }}>
+            return <article key={car.id} className="mobile-car-card" onClick={() => onSelectCar(car.id, car)}>
               <div className="mobile-car-image"><img src={car.images[0]} alt={`${car.year} ${car.make} ${car.model}`} /><button type="button" aria-label="Save car" onClick={(event) => { event.stopPropagation(); onToggleSaveCar(car.id); }}><Heart className={`w-4 h-4 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} /></button>{car.verified && <span><ShieldCheck className="w-3 h-3" /> Verified</span>}</div>
               <div className="mobile-car-info"><h3>{car.make} {car.model}</h3><p>{car.year} · {car.transmission} · {car.mileage.toLocaleString()} {car.mileageUnit || 'km'}</p><div><strong>₦{car.priceNgn.toLocaleString()}</strong><small><MapPin className="w-3 h-3" /> Vehicle location: {car.location}</small></div><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([car.location, car.city, car.state].filter(Boolean).join(', '))}`} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="text-[10px] font-semibold text-[#0e7c3a] hover:underline">View on Google Maps</a></div>
             </article>;
@@ -667,7 +664,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 className="bg-white rounded-2xl border shaba-surface border-slate-200/90 overflow-hidden shadow-2xs hover:shadow-md transition-all flex flex-col group cursor-pointer shaba-premium-card"
                 onClick={() => {
                   onSelectCar(car.id, car);
-                  onNavigate('car-details');
                 }}
               >
                 {/* Photo with Wishlist Heart */}

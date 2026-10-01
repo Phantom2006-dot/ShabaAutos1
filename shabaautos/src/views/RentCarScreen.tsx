@@ -206,7 +206,7 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
 
   const handleSearchScroll = () => {
     if (dateValidationMessage) return;
-    const el = document.getElementById('rental-inventory-section');
+    const el = document.getElementById(window.matchMedia('(max-width: 639px)').matches ? 'rent-mobile-inventory' : 'rental-inventory-section');
     if (el) {
       el.scrollIntoView({ behavior: 'smooth' });
     }
@@ -242,9 +242,9 @@ export const RentCarScreen: React.FC<RentCarScreenProps> = ({ onNavigate }) => {
         </div>
         <div className="rent-mobile-section-head"><div><small>CHOOSE YOUR STYLE</small><h2>Browse by category</h2></div><SlidersHorizontal className="w-4 h-4" /></div>
         <div className="rent-mobile-categories">{['All', 'SUV', 'Sedan', 'Luxury', 'Executive'].map((category) => <button type="button" key={category} onClick={() => setSelectedCategory(category)} className={selectedCategory === category ? 'is-active' : ''}>{category}</button>)}</div>
-        <div id="rent-mobile-inventory" className="rent-mobile-inventory-head"><div><small>FLEET BROWSING</small><h2>Popular rentals</h2></div><span>{filteredCars.length} cars</span></div>
+        <div id="rent-mobile-inventory" className="rent-mobile-inventory-head"><div><small>FLEET BROWSING</small><h2>Rental fleet</h2></div><span>{filteredCars.length} {filteredCars.length === 1 ? 'car' : 'cars'}</span></div>
         {dateValidationMessage && <p className="rent-mobile-loading text-amber-700">{dateValidationMessage}</p>}
-        {isLoadingCars ? <div className="rent-mobile-loading">Loading the rental fleet...</div> : rentalLoadError ? <div className="rent-mobile-loading">{rentalLoadError}</div> : <div className="rent-mobile-car-list">{filteredCars.map((car) => <article key={car.id} className="rent-mobile-car-card"><div className="rent-mobile-car-image"><img src={car.imageUrl} alt={car.name} /><span>{car.category}</span><b><Star className="w-3 h-3 fill-current" /> {car.rating}</b></div><div className="rent-mobile-car-body"><div><h3>{car.name}</h3><p>{car.transmission} · {car.fuel} · {car.seats} seats</p></div><strong>₦{car.pricePerDayNgn.toLocaleString()}<small>/day</small></strong></div><div className="rent-mobile-car-footer"><span><ShieldCheck className="w-3 h-3" /> Insurance options available</span><button type="button" onClick={() => handleStartBooking(car)}>Book now</button></div></article>)}</div>}
+        {isLoadingCars ? <div className="rent-mobile-loading">Loading the rental fleet...</div> : rentalLoadError ? <div className="rent-mobile-loading">{rentalLoadError}</div> : filteredCars.length === 0 ? <div className="rent-mobile-loading rounded-xl border border-slate-200 bg-white p-4 text-center">No rental cars match this location and category. <button type="button" className="mt-2 block w-full font-bold text-emerald-800 underline" onClick={() => { setSelectedCategory('All'); setPickupLocation('Lagos - Airport (LOS)'); }}>Show all Lagos rentals</button></div> : <div className="rent-mobile-car-list">{filteredCars.map((car) => <article key={car.id} className="rent-mobile-car-card"><div className="rent-mobile-car-image"><img src={car.imageUrl} alt={car.name} /><span>{car.category}</span><b><Star className="w-3 h-3 fill-current" /> {car.rating}</b></div><div className="rent-mobile-car-body"><div><h3>{car.name}</h3><p>{car.transmission} · {car.fuel} · {car.seats} seats</p></div><strong>₦{car.pricePerDayNgn.toLocaleString()}<small>/day</small></strong></div><div className="rent-mobile-car-footer"><span><ShieldCheck className="w-3 h-3" /> Insurance options available</span><button type="button" onClick={() => handleStartBooking(car)}>Book now</button></div></article>)}</div>}
         <div className="rent-mobile-trust"><CheckCircle2 className="w-5 h-5" /><div><strong>Clear rental terms</strong><small>Transparent rates and support; cancellation terms apply.</small></div></div>
       </section>
       {/* Daylight Hero Section matching Web8.png */}

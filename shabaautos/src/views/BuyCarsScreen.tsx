@@ -292,7 +292,6 @@ export const BuyCarsScreen: React.FC<BuyCarsScreenProps> = ({
 
   const handleCarClick = (car: Car) => {
     onSelectCar(car.id, car);
-    onNavigate('car-details');
   };
 
   const handleImageError = (carId: string) => {

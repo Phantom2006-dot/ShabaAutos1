@@ -22,7 +22,8 @@ import { MobileSidebar } from './components/MobileSidebar';
 
 export default function App() {
   const initialCarId = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('carId');
-  const [currentScreen, setCurrentScreen] = useState<ScreenId>(initialCarId ? 'car-details' : 'home');
+  const initialTrackingId = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('trackingId');
+  const [currentScreen, setCurrentScreen] = useState<ScreenId>(initialCarId ? 'car-details' : initialTrackingId ? 'order-tracking' : 'home');
   const [selectedCarId, setSelectedCarId] = useState<string>(initialCarId || '');
   const [selectedCar, setSelectedCar] = useState<Car | undefined>();
   const [previousScreen, setPreviousScreen] = useState<ScreenId>('home');
@@ -70,6 +71,13 @@ export default function App() {
     setMobileMenuOpen(false);
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('carId')) {
       window.history.replaceState(null, '', window.location.pathname);
+    }
+    if (screen !== 'order-tracking' && screen !== 'auth' && typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('trackingId')) {
+        url.searchParams.delete('trackingId');
+        window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      }
     }
     if (screen === 'car-details-rav4') {
       window.history.replaceState(null, '', `${window.location.pathname}?search=RAV4`);
