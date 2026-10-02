@@ -23,3 +23,32 @@ export function useBusinessContact(): BusinessContact {
   }, []);
   return contact;
 }
+
+/** Renders a stored Nigerian number in a readable, human format. */
+export function formatContactPhone(raw: string): string {
+  const value = (raw || '').trim();
+  if (!value) return '';
+  const digits = value.replace(/\D/g, '');
+  if (digits.startsWith('234') && digits.length === 13) {
+    return `+234 ${digits.slice(3, 6)} ${digits.slice(6, 9)} ${digits.slice(9)}`;
+  }
+  if (digits.startsWith('0') && digits.length === 11) {
+    return `+234 ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `+234 ${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  }
+  return value;
+}
+
+/** Normalises a stored number into an international dialling value. */
+export function toDialNumber(raw: string): string {
+  const value = (raw || '').trim();
+  if (!value) return '';
+  if (value.startsWith('+')) return value.replace(/[^\d+]/g, '');
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('234')) return `+${digits}`;
+  if (digits.startsWith('0')) return `+234${digits.slice(1)}`;
+  return `+234${digits}`;
+}

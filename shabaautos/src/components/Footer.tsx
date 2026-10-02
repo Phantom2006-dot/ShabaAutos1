@@ -1,8 +1,8 @@
 import React from 'react';
-import { Phone, Mail, ShieldCheck, CheckCircle2, Award, Clock } from 'lucide-react';
+import { Phone, Mail, ShieldCheck, CheckCircle2, Award, Clock, MessageSquare } from 'lucide-react';
 import { ScreenId } from '../types';
 import { ShabaAutosLogo } from './ShabaAutosLogo';
-import { useBusinessContact } from '../hooks/useBusinessContact';
+import { useBusinessContact, formatContactPhone, toDialNumber } from '../hooks/useBusinessContact';
 
 interface FooterProps {
   onNavigate: (screen: ScreenId) => void;
@@ -19,6 +19,12 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
     : '';
   const directionsHref = address
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`
+    : '';
+  const phoneDisplay = formatContactPhone(phone);
+  const dialNumber = toDialNumber(phone);
+  const phoneHref = dialNumber ? `tel:${dialNumber}` : '';
+  const whatsappHref = dialNumber
+    ? `https://wa.me/${dialNumber.replace(/\D/g, '')}?text=${encodeURIComponent('Hello ShabaAutos, I would like to ask about a vehicle.')}`
     : '';
 
   return (
@@ -73,7 +79,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             <div className="space-y-2 text-xs text-gray-400 pt-2">
               {phone && <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-emerald-400" />
-                <span>{phone}</span>
+                <a href={phoneHref} className="hover:text-emerald-400 transition-colors">{phoneDisplay}</a>
               </div>}
               {email && <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-emerald-400" />
@@ -87,7 +93,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                   rel="noopener noreferrer"
                   className="inline-block hover:text-emerald-400 transition-colors"
                 >
-                  Business location
+                  Get directions on Google Maps
                 </a>
               </div>}
               {!phone && !email && !address && (
@@ -193,28 +199,50 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             <p className="text-xs text-gray-400 mb-3">
               Have a question about a vehicle or a new arrival? Contact the team directly.
             </p>
-            {email ? (
-              <a
-                href={enquiryEmailHref}
-                className="inline-flex w-full items-center justify-center gap-2 py-2 bg-[#0a502c] hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                Contact support
-              </a>
-            ) : (
-              <p className="text-xs text-gray-400">Business contact details are being confirmed. Use request forms on site to connect.</p>
-            )}
+            <div className="space-y-2">
+              {email && (
+                <a
+                  href={enquiryEmailHref}
+                  className="inline-flex w-full items-center justify-center gap-2 py-2 bg-[#0a502c] hover:bg-emerald-700 text-white font-semibold rounded-lg text-xs transition-colors"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  Email {email}
+                </a>
+              )}
+              {phone && (
+                <a
+                  href={phoneHref}
+                  className="inline-flex w-full items-center justify-center gap-2 py-2 border border-gray-700 hover:border-emerald-500 hover:text-emerald-400 text-gray-200 font-semibold rounded-lg text-xs transition-colors"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                  Call {phoneDisplay}
+                </a>
+              )}
+              {whatsappHref && (
+                <a
+                  href={whatsappHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex w-full items-center justify-center gap-2 py-2 bg-[#128c7e] hover:bg-[#0f7a6d] text-white font-semibold rounded-lg text-xs transition-colors"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Chat on WhatsApp
+                </a>
+              )}
+              {!email && !phone && (
+                <p className="text-xs text-gray-400">Business contact details are being confirmed. Use request forms on site to connect.</p>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Bottom copyright */}
         <div className="mt-12 pt-6 pb-6 md:pb-0 border-t border-gray-800 flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-4">
           <p>© {new Date().getFullYear()} ShabaAutos Nigeria Ltd. All rights reserved.</p>
-          {email && (
-            <div className="flex items-center gap-4">
-              <a href={emailHref} className="hover:text-gray-400">Contact support</a>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            {email && <a href={emailHref} className="hover:text-gray-400">{email}</a>}
+            {phone && <a href={phoneHref} className="hover:text-gray-400">{phoneDisplay}</a>}
+          </div>
         </div>
       </div>
     </footer>
