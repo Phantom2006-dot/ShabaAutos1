@@ -10,12 +10,12 @@ interface FooterProps {
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
   const { phone, email, address } = useBusinessContact();
-  const emailHref = email ? `mailto:${encodeURIComponent(email)}` : '';
+  const emailHref = email ? `mailto:${email}` : '';
   const inspectionEmailHref = email
-    ? `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('Vehicle inspection records')}`
+    ? `mailto:${email}?subject=${encodeURIComponent('Vehicle inspection records')}`
     : '';
   const enquiryEmailHref = email
-    ? `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent('ShabaAutos vehicle enquiry')}`
+    ? `mailto:${email}?subject=${encodeURIComponent('ShabaAutos vehicle enquiry')}`
     : '';
   const directionsHref = address
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`
